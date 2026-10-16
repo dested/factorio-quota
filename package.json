@@ -1,0 +1,16 @@
+{
+  "name": "quota-factorio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "bun tools/lualint.ts mod tools",
+    "typecheck": "tsc --noEmit",
+    "sounds": "bun tools/make-sounds.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "@types/luaparse": "^0.2.13",
+    "luaparse": "^0.3.1",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "quota-shots",
+  "version": "1.0.0",
+  "title": "QUOTA screenshot driver",
+  "author": "Sal Aiello",
+  "factorio_version": "2.1",
+  "description": "Plays through every QUOTA screen in a real client and screenshots each one. Test harness only.",
+  "dependencies": ["quota"]
+}

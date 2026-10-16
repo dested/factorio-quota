@@ -1,0 +1,5 @@
+require("prototypes.fonts")
+require("prototypes.sounds")
+require("prototypes.entities")
+require("prototypes.styles")
+require("prototypes.inputs")

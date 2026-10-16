@@ -1,0 +1,4 @@
+.factorio-test/
+.profile/
+install/*.zip
+node_modules/

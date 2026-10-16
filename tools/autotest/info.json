@@ -1,0 +1,9 @@
+{
+  "name": "quota-autotest",
+  "version": "1.0.0",
+  "title": "QUOTA autotest",
+  "author": "Sal Aiello",
+  "factorio_version": "2.1",
+  "description": "Drives a full QUOTA run headlessly through the quota remote interface. Test harness only.",
+  "dependencies": ["quota"]
+}
