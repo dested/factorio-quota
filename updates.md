@@ -2,6 +2,10 @@
 
 Newest first. One entry per finished task.
 
+## 2026-10-16 — launcher failed silently on a second PC
+play.ps1 now quotes its paths, checks Factorio >= 2.1, starts Steam if needed, refuses a second copy, logs to .profile/play.log and pauses on errors with Factorio's log tail (play.cmd and the shortcut pass -Pause).
+Touched: install/play.ps1, install/setup.ps1, play.cmd, cliffnotes.md
+
 ## 2026-10-16 — desktop shortcut + private GitHub repo
 Desktop QUOTA.lnk with the mod icon; setup.ps1 -Shortcut makes one on any machine. First commit, pushed to private github.com/dested/factorio-quota.
 Touched: install/setup.ps1, install/quota.ico, cliffnotes.md

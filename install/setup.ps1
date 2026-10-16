@@ -94,7 +94,7 @@ if ($Shortcut) {
   $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'QUOTA.lnk'
   $sc = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
   $sc.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-  $sc.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $PSScriptRoot 'play.ps1')`""
+  $sc.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $PSScriptRoot 'play.ps1')`" -Pause"
   $sc.WorkingDirectory = $repo
   $sc.IconLocation = "$(Join-Path $PSScriptRoot 'quota.ico'),0"
   $sc.Description = 'QUOTA: The Factory Must Grow (Or Else). Starts a fresh run.'

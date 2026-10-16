@@ -168,6 +168,10 @@ outlive a debug jump.
 - The Steam build re-launches itself through Steam. Start the client with PowerShell `Start-Process`
   and Windows paths (`cygpath -w`); a bash `&` launch silently never starts. `--create` and
   `--benchmark` are headless and can be run directly.
+- Windows PowerShell `Start-Process -ArgumentList` does not quote: wrap every path in quotes yourself
+  (`Quote` in play.ps1) or a clone path with a space breaks the launch.
+- play.ps1 starts Steam first when the exe lives under steamapps and Steam is not running, and
+  writes `.profile/play.log`; on failure it prints the end of `.profile/factorio-current.log`.
 - Kill only our test client: match `factorio.exe` whose command line contains `factorio-test`.
 - A real-client screenshot run stalled once when its window was buried behind others. Keep it visible.
 - In tools TS, never name a function `declare`: bun strips `declare(...)` statements.
