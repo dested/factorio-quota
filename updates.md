@@ -2,6 +2,10 @@
 
 Newest first. One entry per finished task.
 
+## 2026-10-17 — play it on a Mac
+play.sh: finds factorio.app (Steam, /Applications, Spotlight), builds the same isolated profile, checks 2.1+, starts Steam, creates and opens a fresh run. Dry-run tested with a stubbed app; not yet run on a real Mac.
+Touched: play.sh, cliffnotes.md
+
 ## 2026-10-16 — launcher failed silently on a second PC
 play.ps1 now quotes its paths, checks Factorio >= 2.1, starts Steam if needed, refuses a second copy, logs to .profile/play.log and pauses on errors with Factorio's log tail (play.cmd and the shortcut pass -Pause).
 Touched: install/play.ps1, install/setup.ps1, play.cmd, cliffnotes.md
