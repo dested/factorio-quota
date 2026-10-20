@@ -1,9 +1,11 @@
 {
   "name": "quota",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "title": "QUOTA: The Factory Must Grow (Or Else)",
   "author": "Sal Aiello",
   "factorio_version": "2.1",
-  "description": "A one-hour single-player Factorio roguelite. The Company drops you on a tiny island with a Shipping Terminal and a quota. Every shift the clock runs and the quota climbs. Between shifts: buy rule-bending contracts, technology, supply drops and new land rising out of the sea. Gremlins, earthquakes, meteor storms, union strikes and, at the end, The Audit. Hijacks any new game: start a new game and you are already on the clock.",
-  "dependencies": ["base >= 2.1.0", "! space-age"]
+  "description": "An hour-long single-player Factorio roguelite. The Company drops you on a tiny island with a Shipping Terminal and a quota. Every shift the clock runs and the quota climbs. Between shifts: rule-bending contracts, instant tech, drop-pod supplies and new land rising out of the sea. Gremlins, earthquakes, meteor storms, union strikes and, at the end, The Audit. Simple or Complex mode, every hazard switchable. Play it from New Game > Scenarios > QUOTA; the mod does nothing in other games.",
+  "dependencies": [
+    "base >= 2.1.0"
+  ]
 }

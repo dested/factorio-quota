@@ -78,6 +78,8 @@ setup() {
 
   # mods: QUOTA (a symlink to the repo) and plain vanilla.
   ln -sfn "$repo/mod" "$profile/mods/quota"
+  # quota-dev: marker mod so QUOTA runs on the plain new map this script creates.
+  ln -sfn "$repo/install/quota-dev" "$profile/mods/quota-dev"
   cat > "$profile/mods/mod-list.json" <<'EOF'
 {
   "mods": [
@@ -86,7 +88,8 @@ setup() {
     { "name": "quality", "enabled": false },
     { "name": "recycler", "enabled": false },
     { "name": "space-age", "enabled": false },
-    { "name": "quota", "enabled": true }
+    { "name": "quota", "enabled": true },
+    { "name": "quota-dev", "enabled": true }
   ]
 }
 EOF
@@ -103,7 +106,7 @@ for arg in "$@"; do
   esac
 done
 
-if [ "$force_setup" = 1 ] || [ ! -f "$profile/app.txt" ]; then
+if [ "$force_setup" = 1 ] || [ ! -f "$profile/app.txt" ] || [ ! -e "$profile/mods/quota-dev" ]; then
   say 'Setting up the QUOTA profile...'
   setup
 fi

@@ -64,6 +64,14 @@ C.RAW_VALUES = {
   ["crude-oil"] = 0.15, ["water"] = 0, ["steam"] = 0,
 }
 C.VALUE_OVERRIDES = { ["uranium-235"] = 300 }
+-- Space Age raws from other planets never get a value: the run is on one island, and recipes
+-- through them (scrap recycling, foundry casting) would undercut every Nauvis price.
+C.OFFWORLD_RAWS = {
+  ["scrap"] = true, ["tungsten-ore"] = true, ["calcite"] = true, ["holmium-ore"] = true,
+  ["lithium-brine"] = true, ["fluorine"] = true, ["sulfuric-acid"] = true, ["lava"] = true,
+}
+-- Recipe categories that never set a price (recycling runs backwards through the graph).
+C.UNPRICED_CATEGORIES = { ["recycling"] = true, ["recycling-or-hand-crafting"] = true }
 -- Value multipliers after the recipe pass. Shotgun shells are one hand-craft from plates and
 -- were the best money in the early game; now they roughly break even on their plates.
 C.VALUE_SCALE = { ["shotgun-shell"] = 0.8 }

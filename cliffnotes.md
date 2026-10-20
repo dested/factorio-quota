@@ -20,12 +20,18 @@ mod (no scenario); it hijacks freeplay from `on_init`.
   `install/setup.ps1 -Shortcut` (needs only Factorio 2.1).
 - **Lint Lua:** `bun run lint` (syntax, undefined globals, unused locals, missing module members)
 - **Typecheck tools:** `bun run typecheck` (only the TS in `tools/`)
+- **Release zip:** `bun run package` → `dist/quota_<version>.zip` (checks info.json, changelog entry, thumbnail).
+  Upload to the mod portal by hand (name `quota` was free on 2026-10-19).
+- **Scenario + dormancy:** the released mod only runs in its scenario (`mod/scenarios/quota/`, New Game →
+  Scenarios → QUOTA): `wanted()` in control.lua checks `script.level.mod_name == "quota"`. Anywhere else
+  `storage.q` stays nil and every handler no-ops. The launchers and test harnesses enable a marker mod
+  (`install/quota-dev`, `quota-autotest`, `quota-shots`) so a plain `--create` map runs QUOTA.
 - **Headless full-run test:** `bash tools/run-autotest.sh` → `passes=N fails=0 script_errors=0 done=1`
 - **Screenshots in a real client:** `bash tools/run-shots.sh` (plan = `PLAN` in `tools/shots/control.lua`)
 - **Sounds:** `bun run sounds` regenerates `mod/sound/*.wav` (deterministic)
 - **Factorio:** 2.1.22 Steam, `C:\Program Files (x86)\Steam\steamapps\common\Factorio`. Space Age is
-  installed; QUOTA declares `! space-age`, and the profile also disables quality, elevated-rails and
-  the built-in recycler.
+  installed and supported (autotest with `QUOTA_MODS=.factorio-test/sa-mods`); the play profile keeps
+  it off. Offworld raws (`C.OFFWORLD_RAWS`) and recycling recipes never set prices.
 - **Units:** money is plain numbers (`U.money` formats); time is ticks (60/s), config durations
   are written `N * 60`; a plot is 64×64 tiles, grid is −4..4 on both axes, HQ plot at 0,0.
 

@@ -11,7 +11,10 @@
 | Typecheck tools | `bun run typecheck` | [cheap] |
 | Headless full run (8 shifts, endless, fired, reapply, every shop kind) | `bash tools/run-autotest.sh` | [medium] (~30 s) |
 | Profile sanity (mods load, map creates) | `P=.profile; "$(cat $P/exe.txt)" --config $P/config/config.ini --mod-directory $P/mods --create $P/saves/check.zip` then delete it | [medium] |
-| Compat run (Quality, Elevated Rails, Recycler on; Space Age off) | same `--create` + `--benchmark` as run-autotest.sh with `--mod-directory .factorio-test/compat-mods` | [medium] |
+| Compat run (Quality, Elevated Rails, Recycler on; Space Age off) | `QUOTA_MODS=.factorio-test/compat-mods bash tools/run-autotest.sh` | [medium] |
+| Space Age run (all DLC mods on) | `QUOTA_MODS=.factorio-test/sa-mods bash tools/run-autotest.sh` | [medium] |
+| Release zip | `bun run package` → `dist/quota_<v>.zip` | [cheap] |
+| Release behaviour (zip alone, SA on) | copy the zip into `.factorio-test/zip-mods/`, then `--scenario2map quota/quota` logs `QUOTA active` and `--create` logs `QUOTA dormant` | [medium] |
 | Real-client screenshots | `bash tools/run-shots.sh` (opens a Factorio window ~1 min) | [heavy — ask first] |
 | Rebuild profile + zip | `powershell -ExecutionPolicy Bypass -File install/setup.ps1` | [cheap] |
 

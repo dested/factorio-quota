@@ -37,7 +37,9 @@ function V.compute()
     local mp = ent.mineable_properties
     if mp and mp.products then
       for _, p in pairs(mp.products) do
-        if p.type == "fluid" then
+        if C.OFFWORLD_RAWS[p.name] then
+          -- left unpriced
+        elseif p.type == "fluid" then
           if fv[p.name] == nil then fv[p.name] = 0.05 end
         elseif iv[p.name] == nil then
           iv[p.name] = 1
@@ -52,7 +54,11 @@ function V.compute()
 
   local recipes = {}
   for _, r in pairs(prototypes.recipe) do
-    if not r.hidden and not r.parameter then recipes[#recipes + 1] = r end
+    local priced = not r.hidden and not r.parameter
+    for cat in pairs(r.categories or {}) do
+      if C.UNPRICED_CATEGORIES[cat] then priced = false end
+    end
+    if priced then recipes[#recipes + 1] = r end
   end
   table.sort(recipes, function(a, b) return a.name < b.name end)
 

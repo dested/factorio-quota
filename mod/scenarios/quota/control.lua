@@ -1,0 +1,2 @@
+-- The QUOTA scenario. The game itself lives in the quota mod's control.lua, which only
+-- wakes up in this scenario (see script.level there). Nothing to do at the level script.

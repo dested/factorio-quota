@@ -31,8 +31,9 @@ function Wait-For([scriptblock]$done, [int]$seconds) {
 }
 
 try {
-  if (-not (Test-Path (Join-Path $profileDir 'exe.txt'))) {
-    Say 'First launch: setting up the QUOTA profile...'
+  # Profiles from before the quota-dev marker mod need setup again.
+  if (-not (Test-Path (Join-Path $profileDir 'exe.txt')) -or -not (Test-Path (Join-Path $profileDir 'mods\quota-dev'))) {
+    Say 'Setting up the QUOTA profile...'
     & (Join-Path $PSScriptRoot 'setup.ps1')
   }
   $exe = (Get-Content (Join-Path $profileDir 'exe.txt') -Raw).Trim()

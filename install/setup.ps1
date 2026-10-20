@@ -62,6 +62,12 @@ $link = Join-Path $profileDir 'mods\quota'
 if (-not (Test-Path $link)) {
   New-Item -ItemType Junction -Path $link -Target $modDir | Out-Null
 }
+# quota-dev: a marker mod that makes QUOTA run on the plain --create map the launcher makes
+# (the released mod only wakes up in its own scenario).
+$devLink = Join-Path $profileDir 'mods\quota-dev'
+if (-not (Test-Path $devLink)) {
+  New-Item -ItemType Junction -Path $devLink -Target (Join-Path $PSScriptRoot 'quota-dev') | Out-Null
+}
 $modList = @'
 {
   "mods": [
@@ -70,7 +76,8 @@ $modList = @'
     { "name": "quality", "enabled": false },
     { "name": "recycler", "enabled": false },
     { "name": "space-age", "enabled": false },
-    { "name": "quota", "enabled": true }
+    { "name": "quota", "enabled": true },
+    { "name": "quota-dev", "enabled": true }
   ]
 }
 '@

@@ -2,6 +2,13 @@
 
 Settled choices. Append-only; supersede with a new entry instead of editing.
 
+## 2026-10-19 — Ship as a scenario; the mod is dormant elsewhere (supersedes "Pure mod that hijacks freeplay")
+**Why:** a downloadable mod can't take over every new game a player starts. The mod bundles `scenarios/quota` and runs only when `script.level.mod_name == "quota"`. The dev launchers keep their one-click fresh run through a `quota-dev` marker mod rather than switching to `--scenario2map`.
+**Rejected:** a startup setting to hijack freeplay (players would leave it on by accident; the setting lives in a binary file the launchers can't easily write).
+
+## 2026-10-19 — Space Age supported; offworld raws unpriced
+**Why:** Sal plays with Space Age on. With it, scrap auto-priced at $1 and scrap recycling undercut every Nauvis price ($0.11 gears). Offworld resources (`C.OFFWORLD_RAWS`) get no value and recycling categories never price, so values match vanilla.
+
 ## 2026-10-19 — No Company-issue items: kit and crate consumables sell normally (supersedes the entry below)
 **Why:** Sal disliked the padlock-stamped copies ("if you sell everything so be it"). The $1-ammo bug stays fixed because the fungible counter it came from is gone too. Free care packages carry machines only, so nothing free can be flipped; paid crates of products cost 1.25x value.
 

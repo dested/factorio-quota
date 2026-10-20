@@ -1,0 +1,9 @@
+{
+  "name": "quota-dev",
+  "version": "1.0.0",
+  "title": "QUOTA dev launcher marker",
+  "author": "Sal Aiello",
+  "factorio_version": "2.1",
+  "description": "Only for the repo's play launchers: makes QUOTA run on a plain new map instead of waiting for its scenario.",
+  "dependencies": ["quota"]
+}

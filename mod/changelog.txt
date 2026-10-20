@@ -1,0 +1,32 @@
+---------------------------------------------------------------------------------------------------
+Version: 2.0.0
+Date: 2026-10-19
+  Features:
+    - QUOTA is now a scenario: New Game > Scenarios > QUOTA. The mod does nothing in any other game, so it can stay in your mod list.
+    - Run Setup screen: Simple mode (8 shifts, all tech for sale) or Complex mode (10 shifts, deep production chains pay up to 2.6x, tech zoned by how much land you own).
+    - Every threat, condition and event can be switched off. Presets: Full Company, No Biters, Race the Clock.
+    - Fine print: run length, written warnings, quota size, shift length and break length. All of it lives in Map settings too.
+    - The Company Handbook: every contract, condition, event, tech, crate, plot type and corporate offer in one window.
+    - MARKET side panel: hot items worked out for you (usual price x multiplier = what it pays now) and the top payers, live.
+    - Hover an item icon for its recipe.
+    - Clock out early once the quota is met, for a bonus on the time left.
+    - Electric Furnaces in the Tech tab.
+    - Works with Space Age, Quality, Elevated Rails and Recycler enabled.
+  Changes:
+    - Compact HUD in the bottom-right corner (per-player setting for the corner).
+    - Starter kit: 2 boilers, 2 steam engines, 100 coal and 20 repair packs. More power is for sale.
+    - Meteor showers and gremlin infestations wait until shift 4; early meteors are smaller and rarer.
+    - Destroyed machines leave ghosts.
+    - Shotgun shells pay less and are never hot.
+    - Drop pods raise an alert when they land.
+    - A Shipping Terminal holds its sale while you have it open.
+    - The R&D tab is now Tech, with a note on how it relates to Factorio's own tech tree.
+    - The Land tab only shows your land and the plots for sale next to it.
+  Bugfixes:
+    - Fixed crafted ammo selling for $1 while shown as hot.
+    - Fixed the Shipping Terminal art sitting a tile above its footprint.
+---------------------------------------------------------------------------------------------------
+Version: 1.0.0
+Date: 2026-10-16
+  Features:
+    - First release: an hour-long single-player roguelite on a tiny island with a quota.

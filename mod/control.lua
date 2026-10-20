@@ -61,7 +61,25 @@ end
 
 -- ---------------------------------------------------------------- init ---
 
+-- QUOTA runs in its own scenario (New Game > Scenarios > QUOTA) and stays dormant in every other
+-- game, so the mod can sit in a normal mod list. The test harnesses (and the dev launcher's
+-- quota-dev marker mod) run it on a plain --create map instead.
+local DEV_MODS = { "quota-autotest", "quota-shots", "quota-dev" }
+local function wanted()
+  local level = script.level
+  if level and level.mod_name == "quota" then return true end
+  for _, name in ipairs(DEV_MODS) do
+    if script.active_mods[name] then return true end
+  end
+  return false
+end
+
 script.on_init(guard("on_init", function()
+  if not wanted() then
+    log("QUOTA dormant: not the QUOTA scenario")
+    return
+  end
+  log("QUOTA active")
   storage.q = SF.fresh_state(nil)
   local seed = 1
   local nauvis = game.surfaces["nauvis"]
@@ -123,8 +141,8 @@ script.on_event(defines.events.on_cutscene_cancelled, guard("cutscene_cancelled"
 -- ------------------------------------------------------------ players ---
 
 script.on_event(defines.events.on_player_created, guard("on_player_created", function(event)
-  quiet_freeplay()
   if not ready() then return end
+  quiet_freeplay()
   local player = game.get_player(event.player_index)
   if not player then return end
   SF.place_player(player)

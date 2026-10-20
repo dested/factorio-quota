@@ -2,3 +2,4 @@
 .profile/
 install/*.zip
 node_modules/
+dist/
