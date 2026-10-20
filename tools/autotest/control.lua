@@ -230,6 +230,15 @@ local function break_body(n, opts)
     if n == 1 then
       out("BUY mystery", call("buy", "mystery"))
       out("BUY terminal", call("buy", "terminal"))
+      call("money", 5000)
+      local g = call("buy", "crate", "grid")
+      out("BUY grid", g)
+      check(g.ok, "bought the Power Grid crate")
+      local o = call("buy", "order", "assembling-machine-1", 5)
+      out("ORDER", o)
+      check(o.ok, "single order of 5 assemblers")
+      check(not call("buy", "order", "assembling-machine-1", 7).ok, "order refuses an odd size")
+      check(not call("buy", "order", "electric-furnace", 5).ok, "order refuses a locked building")
     end
     if s.corporate then
       local id = s.corporate[1]

@@ -128,6 +128,7 @@ local function break_panel(parent, player)
   local inner = scroll.add({ type = "flow", direction = "vertical" })
   inner.style.vertical_spacing = 8
   inner.style.horizontally_stretchable = true
+  s.cat.left = inner
   report_section(inner)
   next_section(inner)
   if q.corporate then
@@ -261,10 +262,7 @@ local function rnd_row(parent, sprite, name, sub, desc, price, action, tags, sta
   end
 end
 
-local function tab_rnd(pane)
-  local scroll = pane.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto-and-reserve-space" })
-  scroll.style.height = RIGHT_H - 72
-  scroll.style.width = RIGHT_W - 20
+local function tab_rnd(scroll)
   local intro = scroll.add({ type = "frame", style = "quota_section_frame", direction = "vertical" })
   G.label(intro, "How tech works here", "bold_label", { color = { 1, 0.85, 0.35 } })
   G.label(intro, "Technology below is Factorio's own tech tree (press T to see it). Buying a license researches that technology on the spot, prerequisites included: no labs, no science packs. Your labs still work the normal way too, so you can always research with science instead of cash. Hover the small icons for the recipes a tech unlocks.",
@@ -338,10 +336,7 @@ local function crate_card(parent, sprite, name, desc, items, price, action, tags
   end
 end
 
-local function tab_supplies(pane)
-  local scroll = pane.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto-and-reserve-space" })
-  scroll.style.height = RIGHT_H - 72
-  scroll.style.width = RIGHT_W - 20
+local function tab_supplies(scroll)
   G.label(scroll, "Everything here falls from orbit in a drop pod that lands next to you: empty the pod to collect it.", "label",
     { wrap = true, width = RIGHT_W - 60, color = { 0.7, 0.7, 0.7 } })
   local t = scroll.add({ type = "table", column_count = 3 })
@@ -361,6 +356,26 @@ local function tab_supplies(pane)
   end
   for _, c in ipairs(locked) do
     crate_card(t, c.sprite, c.name, nil, nil, 0, nil, nil, "Locked: needs the tech")
+  end
+  heading(scroll, "Single orders")
+  G.label(scroll, "Every building you've unlocked, by the pack or by the stack. New tech adds to this list.", "label",
+    { wrap = true, width = RIGHT_W - 60, color = { 0.7, 0.7, 0.7 } })
+  local ot = scroll.add({ type = "table", column_count = 2 })
+  ot.style.horizontal_spacing = 6
+  ot.style.vertical_spacing = 2
+  for _, name in ipairs(SH.order_list()) do
+    local row = ot.add({ type = "frame", style = "quota_row_frame", direction = "horizontal" })
+    row.style.width = (RIGHT_W - 60) / 2
+    row.style.vertical_align = "center"
+    G.item_icon(row, name, 32)
+    G.label(row, prototypes.item[name].localised_name, "label", { wrap = true, width = 150 })
+    G.pusher(row)
+    for _, n in ipairs(SH.order_sizes(name)) do
+      local price = SH.order_price(name, n)
+      local b = G.button(row, { "", "x", n, "  ", U.money(price) }, "buy_order", { item = name, n = n }, "button")
+      b.style.width = 106
+      b.style.font_color = G.price_color(price)
+    end
   end
 end
 
@@ -455,10 +470,7 @@ local function tab_market(pane)
   local root = pane.add({ type = "flow", direction = "vertical" })
   G.label(root, "What the terminal pays per unit. Usual x Hot, minus any flood (selling lots of one item drops its price; it recovers 75% between shifts). Machinery sells for scrap. Hover an icon for its recipe.",
     "label", { wrap = true, width = RIGHT_W - 40, color = { 0.75, 0.75, 0.75 } })
-  local scroll = root.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto-and-reserve-space" })
-  scroll.style.height = RIGHT_H - 130
-  scroll.style.width = RIGHT_W - 20
-  local t = scroll.add({ type = "table", column_count = 6 })
+  local t = root.add({ type = "table", column_count = 6 })
   t.style.horizontal_spacing = 14
   t.style.vertical_spacing = 0
   -- Same width and alignment for header and cells so the columns line up.
@@ -486,11 +498,25 @@ end
 
 -- ------------------------------------------------------------- window ---
 
+local function fill_tab(i, sp, player)
+  if i == 1 then tab_contracts(sp, player)
+  elseif i == 2 then tab_rnd(sp)
+  elseif i == 3 then tab_supplies(sp)
+  elseif i == 4 then tab_land(sp, player)
+  else tab_market(sp) end
+end
+
+-- What the window's frame depends on. Anything else refills in place.
+local function signature()
+  local q = storage.q
+  return table.concat({ q.phase, tostring(q.briefing), tostring(q.corporate ~= nil), tostring(P.has("blackmarket")) }, "|")
+end
+
 function CAT.open(player)
   local q = storage.q
   CAT.close(player)
   local s = G.ui(player)
-  s.cat = {}
+  s.cat = { panes = {} }
   local is_break = q.phase == "break"
   local title = is_break and not q.briefing and "Break Room" or "The Company Catalog"
   local frame = G.window(player, NAME, title, "close_catalog")
@@ -523,12 +549,13 @@ function CAT.open(player)
     local content = tp.add({ type = "flow", direction = "vertical" })
     content.style.padding = 8
     tp.add_tab(tab, content)
-    if i == 1 then tab_contracts(content, player)
-    elseif i == 2 then tab_rnd(content)
-    elseif i == 3 then tab_supplies(content)
-    elseif i == 4 then tab_land(content, player)
-    else tab_market(content) end
+    local sp = content.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto-and-reserve-space" })
+    sp.style.height = RIGHT_H - 72
+    sp.style.width = RIGHT_W - 20
+    s.cat.panes[i] = sp
+    fill_tab(i, sp, player)
   end
+  s.cat.sig = signature()
   tp.selected_tab_index = math.min(#TABS, math.max(1, s.tab or 1))
   player.opened = frame
   CAT.update(player)
@@ -538,8 +565,25 @@ function CAT.toggle(player)
   if CAT.is_open(player) then CAT.close(player) else CAT.open(player) end
 end
 
+-- Refill the tabs in place when the frame hasn't changed: clearing a scroll-pane and
+-- refilling it in the same tick keeps its scroll position, so buying something doesn't
+-- jump the list back to the top.
 function CAT.rebuild(player)
-  if CAT.is_open(player) then CAT.open(player) end
+  if not CAT.is_open(player) then return end
+  local s = G.ui(player)
+  local c = s.cat
+  if c.sig ~= signature() then return CAT.open(player) end
+  for i, sp in pairs(c.panes) do
+    if not sp.valid then return CAT.open(player) end
+    sp.clear()
+    fill_tab(i, sp, player)
+  end
+  if c.left and c.left.valid then
+    c.left.clear()
+    report_section(c.left)
+    next_section(c.left)
+  end
+  CAT.update(player)
 end
 
 -- Set by shift.lua.

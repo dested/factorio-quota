@@ -355,6 +355,7 @@ ACT.buy_rnd = function(p, t) after_buy(p, SH.buy_rnd(t.id)) end
 ACT.buy_upgrade = function(p, t) after_buy(p, SH.buy_upgrade(t.id)) end
 ACT.buy_crate = function(p, t) after_buy(p, SH.buy_crate(t.id)) end
 ACT.buy_mystery = function(p) after_buy(p, SH.buy_mystery()) end
+ACT.buy_order = function(p, t) after_buy(p, SH.buy_order(t.item, t.n)) end
 ACT.buy_terminal = function(p) after_buy(p, SH.buy_terminal()) end
 ACT.select_plot = function(p, t)
   local s = G.ui(p)
@@ -608,6 +609,7 @@ remote.add_interface("quota", {
     if kind == "upgrade" then return SH.buy_upgrade(a) end
     if kind == "crate" then return SH.buy_crate(a) end
     if kind == "mystery" then return SH.buy_mystery() end
+    if kind == "order" then return SH.buy_order(a, b) end
     if kind == "terminal" then return SH.buy_terminal() end
     if kind == "plot" then return SH.buy_plot(a, b) end
     if kind == "corporate" then

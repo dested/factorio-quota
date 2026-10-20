@@ -206,6 +206,9 @@ SH.CRATES = {
     items = { { "boiler", 1 }, { "steam-engine", 2 }, { "pipe", 10 } } },
   { id = "powerplant", name = "Steam Power Plant", sprite = "item/boiler",
     items = { { "offshore-pump", 1 }, { "boiler", 4 }, { "steam-engine", 8 }, { "pipe", 30 } } },
+  { id = "grid", name = "Power Grid", sprite = "item/substation",
+    items = { { "small-electric-pole", 30, alt = "medium-electric-pole" }, { "big-electric-pole", 10, needs = "big-electric-pole" },
+      { "substation", 10, needs = "substation" } } },
   { id = "defense", name = "Security Kit", sprite = "item/gun-turret",
     items = { { "gun-turret", 4 }, { "firearm-magazine", 100, alt = "piercing-rounds-magazine" }, { "stone-wall", 60 } } },
   { id = "fastbelts", name = "Fast Belt Bundle", sprite = "item/fast-transport-belt", needs = "fast-transport-belt",
@@ -265,6 +268,83 @@ function SH.buy_crate(id)
   storage.q.stats.crates = (storage.q.stats.crates or 0) + 1
   S.jingle("buy")
   return true, c.name .. ": drop pod inbound, landing next to you."
+end
+
+-- Single orders: any placeable item whose recipe you've unlocked, by the pack or the stack.
+-- Placeables only: they scrap for 10% at the terminal, so buying them can't be flipped for profit.
+-- Tiles (landfill) stay out on purpose: land is bought plot by plot.
+local made_by -- item name -> recipe names; prototypes don't change at runtime, so a local cache is safe
+
+local function index()
+  if made_by then return made_by end
+  made_by = {}
+  for rname, r in pairs(prototypes.recipe) do
+    local ok = not r.hidden and not r.parameter
+    for cat in pairs(r.categories or {}) do
+      if C.UNPRICED_CATEGORIES[cat] then ok = false end
+    end
+    if ok then
+      for _, p in ipairs(r.products or {}) do
+        if p.type == "item" then
+          local list = made_by[p.name] or {}
+          list[#list + 1] = rname
+          made_by[p.name] = list
+        end
+      end
+    end
+  end
+  return made_by
+end
+
+function SH.orderable(name)
+  local proto = prototypes.item[name]
+  if not proto or proto.hidden or proto.parameter then return false end
+  if name:sub(1, 6) == "quota-" then return false end
+  if not storage.q.equipment[name] or V.full(name) <= 0 then return false end
+  for _, rname in ipairs(index()[name] or {}) do
+    if unlocked(rname) then return true end
+  end
+  return false
+end
+
+-- Orderable items in the crafting menu's order.
+function SH.order_list()
+  local out = {}
+  for name in pairs(index()) do
+    if SH.orderable(name) then out[#out + 1] = prototypes.item[name] end
+  end
+  table.sort(out, function(a, b)
+    if a.group.order ~= b.group.order then return a.group.order < b.group.order end
+    if a.subgroup.order ~= b.subgroup.order then return a.subgroup.order < b.subgroup.order end
+    if a.order ~= b.order then return a.order < b.order end
+    return a.name < b.name
+  end)
+  local names = {}
+  for i, p in ipairs(out) do names[i] = p.name end
+  return names
+end
+
+-- The two sizes on offer: a tenth of a stack and a full stack.
+function SH.order_sizes(name)
+  local stack = prototypes.item[name].stack_size
+  local small = math.max(1, math.floor(stack / 10))
+  if small == stack then return { stack } end
+  return { small, stack }
+end
+
+function SH.order_price(name, n)
+  return U.round_nice(V.full(name) * n * C.SUPPLY_MARKUP_MACHINE * L.catalog_mult(true))
+end
+
+function SH.buy_order(name, n)
+  if not SH.orderable(name) then return false, "Not unlocked yet." end
+  if not U.contains(SH.order_sizes(name), n) then return false, "Not a size we sell." end
+  if not L.spend(SH.order_price(name, n)) then return false, "Not enough money." end
+  local pretty = name:gsub("-", " "):gsub("^%l", string.upper)
+  D.drop({ { name, n } }, { label = n .. "x " .. pretty })
+  storage.q.stats.crates = (storage.q.stats.crates or 0) + 1
+  S.jingle("buy")
+  return true, "Order placed: drop pod inbound, landing next to you."
 end
 
 -- Mystery crate: a gamble, usually worth it.
