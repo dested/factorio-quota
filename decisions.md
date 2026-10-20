@@ -2,6 +2,17 @@
 
 Settled choices. Append-only; supersede with a new entry instead of editing.
 
+## 2026-10-19 — No Company-issue items: kit and crate consumables sell normally (supersedes the entry below)
+**Why:** Sal disliked the padlock-stamped copies ("if you sell everything so be it"). The $1-ammo bug stays fixed because the fungible counter it came from is gone too. Free care packages carry machines only, so nothing free can be flipped; paid crates of products cost 1.25x value.
+
+## 2026-10-19 — Company-issue copies replace the "Company property" counter (supersedes 2026-10-15)
+**Why:** the fungible counter charged crafted ammo at scrap once kit ammo was fired ($1 shells shown as hot $40). Handouts meant to be used (ammo, coal, repair packs, modules, grenades) now arrive as `quota-issued-*` items with no value; everything you craft sells in full. Care packages carry machines only.
+**Rejected:** per-unit tagging of stacks (no item-level identity in 2.x without spoilage/quality hacks).
+
+## 2026-10-19 — Simple and Complex modes; settings as map settings
+**Why:** Sal likes "complexity pays" but fears a hard game gets shelved. Simple = 8 shifts, flat markup, all tech for sale (recommended first run). Complex = 10 shifts, value x (0.6 + 0.2 x recipe depth) up to 2.6x, tech zoned by bought plots (oil 2, blue 4, purple/yellow 6), vanilla techs disabled to match. Rules live in runtime-global mod settings so the main menu sets defaults and Run Setup writes back.
+**Rejected:** plot gating in Simple (Sal never needed land, but forcing it on a first run is the shelving risk).
+
 ## 2026-10-15 — Pure mod that hijacks freeplay, not a scenario
 **Why:** a mod can be launched straight into a run (`--create` + `--load-game`), works from New Game → Freeplay, and builds its own surface in `on_init`, so map settings don't matter.
 **Rejected:** a scenario (needs the scenario picker, no clean CLI path; `--load-scenario` isn't a client flag).

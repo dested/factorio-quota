@@ -4,6 +4,7 @@
 -- properties when indexed by name.
 
 local U = require("lib.util")
+local V = require("lib.values")
 
 local G = {}
 
@@ -64,6 +65,37 @@ function G.icon(parent, sprite, size, tooltip, number, style)
   })
   b.style.size = size or 40
   return b
+end
+
+-- Hover target for an item: the recipe its value came from (ingredients, time), else the item.
+function G.elem_for(name)
+  local r = V.recipe(name)
+  if r then return { type = "recipe", name = r } end
+  if prototypes.item[name] then return { type = "item", name = name } end
+  return nil
+end
+
+-- An item icon whose hover shows Factorio's own recipe tooltip.
+function G.item_icon(parent, name, size, number, style)
+  local b = parent.add({
+    type = "sprite-button", sprite = G.sprite("item/" .. name), style = style or "slot_button", number = number,
+  })
+  b.style.size = size or 40
+  local elem = G.elem_for(name)
+  if elem then b.elem_tooltip = elem end
+  return b
+end
+
+function G.checkbox(parent, caption, state, action, extra, tooltip)
+  local tags = { qa = action }
+  for k, v in pairs(extra or {}) do tags[k] = v end
+  return parent.add({ type = "checkbox", caption = caption, state = state, tags = tags, tooltip = tooltip })
+end
+
+function G.dropdown(parent, items, index, action, extra)
+  local tags = { qa = action }
+  for k, v in pairs(extra or {}) do tags[k] = v end
+  return parent.add({ type = "drop-down", items = items, selected_index = index, tags = tags })
 end
 
 -- A screen frame with a draggable title bar and close button.

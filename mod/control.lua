@@ -22,6 +22,10 @@ local SC = require("lib.gui.screens")
 local M = require("lib.market")
 local V = require("lib.values")
 local L = require("lib.ledger")
+local R = require("lib.rules")
+local Z = require("lib.zoning")
+local HB = require("lib.gui.handbook")
+local MP = require("lib.gui.market_panel")
 
 -- Errors in a handler are logged and printed once instead of ending the game.
 local seen_errors = {}
@@ -69,8 +73,20 @@ end))
 
 script.on_configuration_changed(guard("on_configuration_changed", function()
   if not ready() then return end
+  local q = storage.q
+  -- v1 saves: rules from the settings plus the run's difficulty; the property counter is gone.
+  if not q.rules then
+    q.rules = R.read()
+    if q.difficulty and C.DIFFICULTIES[q.difficulty] then q.rules.difficulty = q.difficulty end
+  end
+  q.gifted = nil
+  q.zoned = q.zoned or {}
+  q.tech_tiers = nil
   V.refresh()
   P.apply()
+  if q.phase ~= "orientation" then Z.apply() end
+  U.force().create_ghost_on_entity_death = true
+  GM.refresh_all(false)
 end))
 
 -- -------------------------------------------------------------- intro ---
@@ -128,12 +144,18 @@ end))
 script.on_event(defines.events.on_player_display_resolution_changed, guard("resolution", function(event)
   if not ready() then return end
   local player = game.get_player(event.player_index)
-  if player then HUD.reposition(player) end
+  if player then
+    HUD.reposition(player)
+    if player.gui.screen["quota_orientation"] then SC.orientation(player) end
+  end
 end))
 script.on_event(defines.events.on_player_display_scale_changed, guard("scale", function(event)
   if not ready() then return end
   local player = game.get_player(event.player_index)
-  if player then HUD.reposition(player) end
+  if player then
+    HUD.reposition(player)
+    if player.gui.screen["quota_orientation"] then SC.orientation(player) end
+  end
 end))
 
 -- -------------------------------------------------------------- world ---
@@ -234,11 +256,79 @@ ACT.toggle_catalog = function(p)
 end
 ACT.close_catalog = function(p) CAT.close(p) end
 ACT.clock_in = function() SF.clock_in(true) end
-ACT.start_run = function(p) SF.start_run(G.ui(p).difficulty) end
-ACT.difficulty = function(p, t)
-  if C.DIFFICULTIES[t.id] then G.ui(p).difficulty = t.id end
-  SC.orientation(p)
+-- Two clicks within 5 s: the first arms, the second clocks out.
+ACT.clock_out = function(p)
+  local s = G.ui(p)
+  if s.clockout_armed and game.tick - s.clockout_armed < 5 * 60 then
+    s.clockout_armed = nil
+    SF.clock_out()
+  else
+    s.clockout_armed = game.tick
+    HUD.update(p)
+  end
 end
+-- Writing the rules back raises on_runtime_mod_setting_changed; this marks our own writes.
+local writing_rules = false
+local function write_setting(fn)
+  writing_rules = true
+  local ok, err = pcall(fn)
+  writing_rules = false
+  if not ok then error(err) end
+end
+
+ACT.start_run = function(p)
+  local draft = SC.setup_draft(p)
+  write_setting(function() R.write(draft) end)
+  SF.start_run(R.copy(draft))
+  for _, pl in pairs(game.players) do G.ui(pl).setup = nil end
+end
+
+-- Run Setup edits the draft, then redraws.
+local function setup_edit(p, fn)
+  if storage.q.phase ~= "orientation" then return end
+  fn(SC.setup_draft(p))
+  SC.orientation(p)
+  HB.rebuild(p)
+end
+ACT.setup_mode = function(p, t) setup_edit(p, function(d) if R.MODES[t.id] then d.mode = t.id end end) end
+ACT.setup_diff = function(p, t) setup_edit(p, function(d) if C.DIFFICULTIES[t.id] then d.difficulty = t.id end end) end
+ACT.setup_preset = function(p, t) setup_edit(p, function(d) d.off = R.preset_off(t.id) end) end
+ACT.setup_switch = function(p, t, event)
+  local on = event.element.state
+  setup_edit(p, function(d) d.off[t.key] = (not on) or nil end)
+end
+ACT.setup_knob = function(p, t, event)
+  setup_edit(p, function(d)
+    for _, k in ipairs(R.KNOBS) do
+      if k.key == t.key then
+        local v = k.choices[event.element.selected_index]
+        if v ~= nil then d[k.key] = v end
+      end
+    end
+  end)
+end
+
+ACT.open_handbook = function(p) HB.open(p) end
+ACT.close_handbook = function(p)
+  HB.close(p)
+  local cat = p.gui.screen["quota_catalog"]
+  if cat and cat.valid then p.opened = cat end
+end
+-- A Handbook switch: the draft before a run, the mod setting during one (applies next shift).
+ACT.handbook_switch = function(p, t, event)
+  local on = event.element.state
+  if storage.q.phase == "orientation" then
+    setup_edit(p, function(d) d.off[t.key] = (not on) or nil end)
+    return
+  end
+  write_setting(function() settings.global[R.setting_name(t.key)] = { value = on } end)
+  R.refresh_live()
+  SF.reprepare()
+  local sw = R.SWITCH_BY_KEY[t.key]
+  U.company({ "", SC.switch_name(sw), on and " switched on" or " switched off", " from the next shift." })
+  GM.refresh_all(false)
+end
+ACT.toggle_market = function(p) MP.toggle(p) end
 
 ACT.buy_contract = function(p, t) after_buy(p, SH.buy_contract(t.id)) end
 ACT.sell_contract = function(p, t) after_buy(p, SH.sell_contract(t.id)) end
@@ -292,10 +382,26 @@ script.on_event(defines.events.on_gui_click, guard("on_gui_click", function(even
   local tags = el.tags
   local action = tags and tags.qa
   if not action or action == "tab" then return end
+  -- Drop-downs and checkboxes act on their own events. Handling the click too would redraw the
+  -- screen under an open drop-down list (it locked up the GUI).
+  if el.type == "drop-down" or el.type == "checkbox" then return end
   local fn = ACT[action]
   local player = game.get_player(event.player_index)
   if fn and player then fn(player, tags, event) end
 end))
+
+-- Checkboxes and drop-downs route through the same table.
+local function routed(event)
+  if not ready() then return end
+  local el = event.element
+  if not (el and el.valid) then return end
+  local tags = el.tags
+  local fn = tags and tags.qa and ACT[tags.qa]
+  local player = game.get_player(event.player_index)
+  if fn and player then fn(player, tags, event) end
+end
+script.on_event(defines.events.on_gui_checked_state_changed, guard("on_gui_checked_state_changed", routed))
+script.on_event(defines.events.on_gui_selection_state_changed, guard("on_gui_selection_state_changed", routed))
 
 script.on_event(defines.events.on_gui_selected_tab_changed, guard("on_gui_selected_tab_changed", function(event)
   if not ready() then return end
@@ -303,16 +409,69 @@ script.on_event(defines.events.on_gui_selected_tab_changed, guard("on_gui_select
   if el and el.valid and el.tags and el.tags.qa == "tab" then
     local player = game.get_player(event.player_index)
     if player then G.ui(player).tab = el.selected_tab_index end
+  elseif el and el.valid and el.tags and el.tags.qa == "hb_tab" then
+    local player = game.get_player(event.player_index)
+    if player then G.ui(player).hb_tab = el.selected_tab_index end
   end
 end))
 
 script.on_event(defines.events.on_gui_closed, guard("on_gui_closed", function(event)
   if not ready() then return end
   local el = event.element
-  if el and el.valid and el.name == "quota_catalog" then
-    local player = game.get_player(event.player_index)
-    if player then CAT.close(player) end
+  local player = game.get_player(event.player_index)
+  if not (player and el and el.valid) then return end
+  if el.name == "quota_catalog" then
+    -- Opening the Handbook from the Catalog takes over player.opened; keep the Catalog.
+    if not HB.is_open(player) then CAT.close(player) end
+  elseif el.name == "quota_handbook" then
+    ACT.close_handbook(player)
   end
+end))
+
+-- Opening a terminal holds its sale; say so the first few times.
+script.on_event(defines.events.on_gui_opened, guard("on_gui_opened", function(event)
+  if not ready() then return end
+  local e = event.entity
+  if not (e and e.valid and e.name == "quota-terminal" and T.selling()) then return end
+  local player = game.get_player(event.player_index)
+  if not player then return end
+  local s = G.ui(player)
+  s.hold_hints = (s.hold_hints or 0) + 1
+  if s.hold_hints <= 3 then
+    player.create_local_flying_text({ text = "Sale on hold while open. Close to ship.", create_at_cursor = true,
+      color = { 1, 0.8, 0.3 } })
+  end
+end))
+
+-- ----------------------------------------------------------- settings ---
+
+script.on_event(defines.events.on_runtime_mod_setting_changed, guard("on_runtime_mod_setting_changed", function(event)
+  if not ready() then return end
+  local name = event.setting
+  if name == "quota-hud-position" then
+    local player = event.player_index and game.get_player(event.player_index)
+    if player and storage.q.phase ~= "orientation" then HUD.build(player) end
+    return
+  end
+  if writing_rules or name:sub(1, 6) ~= "quota-" then return end
+  local q = storage.q
+  if q.phase == "orientation" then
+    -- Map settings changed from the menu: start every draft from them again.
+    for _, p in pairs(game.players) do
+      G.ui(p).setup = nil
+      if p.gui.screen["quota_orientation"] then SC.orientation(p) end
+    end
+    return
+  end
+  local locked = R.refresh_live()
+  SF.reprepare()
+  if locked then
+    U.company("Mode, difficulty, run length and warnings are locked for this run; the new values apply to the next one.")
+  else
+    U.company("Run settings updated. Changes apply from the next shift.")
+  end
+  for _, p in pairs(game.players) do HB.rebuild(p) end
+  GM.refresh_all(false)
 end))
 
 script.on_event("quota-toggle-catalog", guard("toggle_catalog", function(event)
@@ -348,6 +507,8 @@ local function summary()
   return {
     phase = q.phase, shift = q.shift, quota = q.quota, shipped = q.shipped, wallet = q.wallet,
     warnings_left = q.warnings_left, difficulty = q.difficulty, endless = q.endless,
+    rules = q.rules, final = R.final(), mode = q.rules and q.rules.mode or nil,
+    zoned = Z.bought(), licensed = Z.licensed(),
     conditions = q.conditions, hot = q.hot_order, perks = q.perks, offers = q.offers,
     next = q.next and { n = q.next.n, quota = q.next.quota, len = q.next.len, conditions = q.next.conditions,
       hot = q.next.hot_order, mults = mults, insider = q.next.insider } or nil,
@@ -364,7 +525,41 @@ remote.add_interface("quota", {
   dump = function(file)
     helpers.write_file(file or "quota-state.json", helpers.table_to_json(summary()) .. "\n", true)
   end,
-  start = function(difficulty) SF.start_run(difficulty or "associate") end,
+  -- A difficulty id or a rules table (lib/rules.lua shape; missing fields come from the settings).
+  start = function(rules)
+    if type(rules) == "table" then
+      local r = R.read()
+      for k, v in pairs(rules) do r[k] = v end
+      r.off = r.off or {}
+      SF.start_run(r)
+    else
+      SF.start_run(rules or "associate")
+    end
+  end,
+  -- Mid-run: change live rules (switches, knobs) as if from Map settings.
+  set_rules = function(fields)
+    local r = R.get()
+    for k, v in pairs(fields) do r[k] = v end
+    if r.off == nil then r.off = {} end
+    SF.reprepare()
+  end,
+  values = function(names)
+    local out = {}
+    for _, n in ipairs(names) do
+      out[n] = { base = V.base(n), depth = V.depth(n), recipe = V.recipe(n), premium = V.premium(n) }
+    end
+    return out
+  end,
+  zoning = function()
+    local locked = {}
+    for _, r in ipairs(SH.RND) do locked[r.id] = SH.rnd_locked(r) or false end
+    local tech = {}
+    for _, n in ipairs({ "oil-processing", "advanced-circuit", "chemical-science-pack", "production-science-pack" }) do
+      local t = U.force().technologies[n]
+      tech[n] = t and { enabled = t.enabled, tier = Z.tier(n) } or false
+    end
+    return { bought = Z.bought(), licensed = Z.licensed(), rnd = locked, tech = tech }
+  end,
   -- End the current shift or break at the next second.
   skip = function()
     local q = storage.q
@@ -383,6 +578,8 @@ remote.add_interface("quota", {
   money = function(n) storage.q.wallet = storage.q.wallet + n end,
   ship = function(amount) L.ship(amount) end,
   clock_in = function() SF.clock_in(true) end,
+  clock_out_bonus = function() return SF.clock_out_bonus() end,
+  clock_out = function() return SF.clock_out() end,
   fire_event = function(id) return E.fire(id) end,
   buy = function(kind, a, b)
     local ok, msg = (function()
@@ -451,6 +648,7 @@ remote.add_interface("quota", {
     local player = game.get_player(player_index or 1)
     if not player then return end
     if which == "orientation" then SC.orientation(player)
+    elseif which == "handbook" then HB.open(player)
     elseif which == "catalog" then CAT.open(player)
     elseif which == "corporate" then SC.corporate(player)
     elseif which == "end" then SC.end_screen(player)

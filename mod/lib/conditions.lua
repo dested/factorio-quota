@@ -1,9 +1,9 @@
 -- Shift conditions: one (later two) per shift, announced during the break
 -- before it so you can buy around them.
 
-local C = require("lib.config")
 local U = require("lib.util")
 local M = require("lib.market")
+local R = require("lib.rules")
 
 local K = {}
 
@@ -14,10 +14,10 @@ K.DEFS = {
     desc = "+80% running speed all shift. Wheee." },
   { id = "golden", name = "Golden Hour", tier = 1, good = true, sprite = "virtual-signal/signal-sun",
     desc = "Everything sells for double in the first 90 seconds. Stockpile during the break." },
-  { id = "gremlins", name = "Gremlin Infestation", tier = 1, sprite = "virtual-signal/signal-skull",
+  { id = "gremlins", name = "Gremlin Infestation", tier = 2, sprite = "virtual-signal/signal-skull",
     desc = "Gremlins jam your machines. Walk up to a jammed machine to whack the gremlin (bounty paid). Ignored gremlins spread." },
-  { id = "meteors", name = "Meteor Shower", tier = 1, sprite = "virtual-signal/signal-explosion",
-    desc = "Meteors rain on your land all shift. Red circles mark impacts. Each crater is full of ore." },
+  { id = "meteors", name = "Meteor Shower", tier = 2, sprite = "virtual-signal/signal-explosion",
+    desc = "Meteors rain on your land all shift (thin early, heavy from shift 6). Red circles mark impacts. Each crater is full of ore. Destroyed machines leave ghosts." },
   { id = "hotpotato", name = "Hot Potato", tier = 1, sprite = "virtual-signal/signal-shuffle",
     desc = "The hot items change every 75 seconds." },
   { id = "strike", name = "Union Strike", tier = 2, sprite = "item/inserter",
@@ -46,16 +46,16 @@ for _, d in ipairs(K.DEFS) do K.BY_ID[d.id] = d end
 -- Conditions for shift `n` given difficulty.
 function K.roll(n)
   local q = storage.q
-  local diff = C.DIFFICULTIES[q.difficulty]
-  if n < diff.cond_from then return {} end
-  local count = (n >= diff.double_from or q.endless) and 2 or 1
-  if q.extra_condition then count = count + 1 end
+  local diff = R.diff()
+  local final = R.final()
   local chosen = {}
   -- The Audit closes the run, and returns every third endless shift.
-  if (n == C.FINAL_SHIFT and not q.endless) or (q.endless and n > C.FINAL_SHIFT and (n - C.FINAL_SHIFT) % 3 == 0) then
-    chosen[#chosen + 1] = "audit"
-    count = count - 1
-  end
+  local audit = (n == final and not q.endless) or (q.endless and n > final and (n - final) % 3 == 0)
+  if audit and R.cond_on("audit") then chosen[#chosen + 1] = "audit" end
+  if n < diff.cond_from then return chosen end
+  local count = (n >= diff.double_from or q.endless) and 2 or 1
+  if q.extra_condition then count = count + 1 end
+  if audit then count = count - 1 end
   for _ = 1, count do K.add_one(n, chosen) end
   return chosen
 end
@@ -66,7 +66,7 @@ local CLASHES = { rush = "mandate", mandate = "rush" }
 function K.add_one(n, chosen)
   local q = storage.q
   local function eligible(d)
-    if d.special or U.contains(chosen, d.id) then return false end
+    if d.special or U.contains(chosen, d.id) or not R.cond_on(d.id) then return false end
     if CLASHES[d.id] and U.contains(chosen, CLASHES[d.id]) then return false end
     if U.contains(q.last_conditions or {}, d.id) then return false end
     if n <= 3 then return d.tier == 1 end
@@ -80,6 +80,15 @@ function K.add_one(n, chosen)
   end)
   if pick then chosen[#chosen + 1] = pick.id end
   return chosen
+end
+
+-- Drop conditions switched off since they were rolled (a mid-break settings change).
+function K.filter(ids)
+  local keep = {}
+  for _, id in ipairs(ids) do
+    if R.cond_on(id) then keep[#keep + 1] = id end
+  end
+  return keep
 end
 
 -- Length and quota adjustments a condition list implies.

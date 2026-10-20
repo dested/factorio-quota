@@ -11,6 +11,7 @@ local W = require("lib.world")
 local L = require("lib.ledger")
 local P = require("lib.perks")
 local S = require("lib.sfx")
+local R = require("lib.rules")
 
 local H = {}
 
@@ -378,8 +379,9 @@ function H.meteor(target)
     surface = surface, target = target, radius = 4, color = RED, filled = true,
     render_mode = "chart", time_to_live = C.METEOR_FLIGHT + 20,
   })
+  local heavy = (storage.q.shift or 1) >= C.METEOR_HEAVY_FROM
   surface.create_entity({
-    name = "quota-meteor", position = from, target = target, force = "enemy",
+    name = heavy and "quota-meteor" or "quota-meteor-light", position = from, target = target, force = "enemy",
     speed = dist / C.METEOR_FLIGHT,
   })
   for _, p in pairs(U.players()) do
@@ -428,7 +430,9 @@ local function meteor_tick()
   local q = storage.q
   if not q.hz.meteor_next then return end
   if game.tick >= q.hz.meteor_next then
-    q.hz.meteor_next = game.tick + U.random(C.METEOR_MIN_GAP, C.METEOR_MAX_GAP)
+    -- Thin showers early: each shift before 8 adds METEOR_EASE to the gap.
+    local ease = C.METEOR_EASE * math.max(0, 8 - (q.shift or 1))
+    q.hz.meteor_next = game.tick + ease + U.random(C.METEOR_MIN_GAP, C.METEOR_MAX_GAP)
     H.meteor(nil)
   end
 end
@@ -483,9 +487,9 @@ function H.raid_land(spot)
   local q = storage.q
   local surface = U.surface()
   if not surface or not spot then return end
-  local diff = C.DIFFICULTIES[q.difficulty or "associate"]
+  local diff = R.diff()
   local shift = q.shift or 1
-  local scale = diff.raid * (q.endless and (1 + 0.25 * (shift - C.FINAL_SHIFT)) or 1)
+  local scale = diff.raid * (q.endless and (1 + 0.25 * (shift - R.final())) or 1)
   local group = surface.create_unit_group({ position = spot, force = "enemy" })
   for _, name in ipairs(raid_roster(shift, scale)) do
     local pos = surface.find_non_colliding_position(name, spot, 10, 0.5)
@@ -558,7 +562,7 @@ function H.start(active, len_ticks)
     end
     q.hz.quakes = { times = times, idx = 1 }
   end
-  if active.meteors then q.hz.meteor_next = t + 15 * 60 end
+  if active.meteors then q.hz.meteor_next = t + 20 * 60 end
   if active.raids then q.hz.raid = { next = t + 70 * 60 } end
 end
 

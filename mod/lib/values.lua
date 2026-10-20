@@ -5,7 +5,9 @@
 -- whose ingredients all have values prices its products as
 --   (sum of ingredient values + seconds * TIME_VALUE) * MARKUP / product units
 -- and the cheapest recipe found in the earliest wave wins. Waves make cycles
--- (barrel fill/empty, kovarex) harmless: a product is priced once.
+-- (barrel fill/empty, kovarex) harmless: a product is priced once. The wave an
+-- item is priced in is its depth (raws 0, plates 1, gears 2, circuits 3...),
+-- which Complex mode's "Complexity Pays" premium reads.
 
 local C = require("lib.config")
 
@@ -23,6 +25,7 @@ end
 
 function V.compute()
   local iv, fv = {}, {}
+  local depth, via = {}, {}
 
   for name, v in pairs(C.RAW_VALUES) do
     if prototypes.item[name] then iv[name] = v end
@@ -43,7 +46,7 @@ function V.compute()
     end
   end
   -- Fluids that come from pumping rather than recipes.
-  for name, f in pairs(prototypes.fluid) do
+  for name in pairs(prototypes.fluid) do
     if fv[name] == nil and (name == "water" or name == "steam") then fv[name] = 0 end
   end
 
@@ -53,7 +56,7 @@ function V.compute()
   end
   table.sort(recipes, function(a, b) return a.name < b.name end)
 
-  for _ = 1, 60 do
+  for wave = 1, 60 do
     local found = {}
     for _, r in ipairs(recipes) do
       local ok = true
@@ -78,7 +81,7 @@ function V.compute()
               if t[p.name] == nil then
                 local key = p.type .. ":" .. p.name
                 if found[key] == nil or each < found[key].v then
-                  found[key] = { t = t, name = p.name, v = each }
+                  found[key] = { t = t, name = p.name, v = each, item = p.type == "item", recipe = r.name }
                 end
               end
             end
@@ -89,11 +92,18 @@ function V.compute()
     local any = false
     for _, f in pairs(found) do
       f.t[f.name] = f.v
+      if f.item then
+        depth[f.name] = wave
+        via[f.name] = f.recipe
+      end
       any = true
     end
     if not any then break end
   end
 
+  for name, k in pairs(C.VALUE_SCALE) do
+    if iv[name] then iv[name] = iv[name] * k end
+  end
   for name, v in pairs(C.VALUE_OVERRIDES) do
     if prototypes.item[name] then iv[name] = v end
   end
@@ -105,15 +115,25 @@ function V.compute()
   end
   iv["quota-terminal"] = nil
 
-  return iv, fv, equipment
+  return iv, fv, equipment, depth, via
 end
 
 function V.refresh()
   local q = storage.q
-  local iv, fv, equipment = V.compute()
+  local iv, fv, equipment, depth, via = V.compute()
   q.values = iv
   q.fluid_values = fv
   q.equipment = equipment
+  q.depth = depth
+  q.value_recipe = via
+end
+
+-- Complex mode: deeper products pay more per unit of value.
+function V.premium(name)
+  local q = storage.q
+  if not (q.rules and q.rules.mode == "complex") then return 1 end
+  local d = (q.depth and q.depth[name]) or 0
+  return math.min(C.COMPLEX_CAP, C.COMPLEX_BASE + C.COMPLEX_STEP * d)
 end
 
 -- Base sale value per unit before any multiplier (scrap applied).
@@ -122,10 +142,10 @@ function V.base(name)
   local v = q.values[name]
   if not v or v <= 0 then return 0 end
   if q.equipment[name] then return v * C.SCRAP_RATE end
-  return v
+  return v * V.premium(name)
 end
 
--- Full (unscrapped) value, used for pricing supply crates.
+-- Full (unscrapped, unpremiumed) value, used for pricing supply crates.
 function V.full(name)
   return storage.q.values[name] or 0
 end
@@ -133,6 +153,21 @@ end
 function V.is_product(name)
   local q = storage.q
   return (q.values[name] or 0) > 0 and not q.equipment[name]
+end
+
+-- Crafting steps from raw materials (0 for raws and unpriced items).
+function V.depth(name)
+  local q = storage.q
+  return (q.depth and q.depth[name]) or 0
+end
+
+-- The recipe an item's value came from, for recipe tooltips.
+function V.recipe(name)
+  local q = storage.q
+  local r = q.value_recipe and q.value_recipe[name]
+  if r and prototypes.recipe[r] then return r end
+  if prototypes.recipe[name] then return name end
+  return nil
 end
 
 return V

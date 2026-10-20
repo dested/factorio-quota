@@ -57,7 +57,7 @@ P.DEFS = {
   { id = "meteorins", name = "Meteor Insurance", rarity = "uncommon", sprite = "virtual-signal/signal-explosion",
     desc = "Every meteor that lands pays out, and leaves triple the ore." },
   { id = "blackmarket", name = "Black Market", rarity = "uncommon", sprite = "virtual-signal/signal-lock",
-    desc = "R&D, Supplies and Land are 25% cheaper." },
+    desc = "Tech, Supplies and Land are 25% cheaper." },
   { id = "pyramid", name = "Pyramid Scheme", rarity = "uncommon", sprite = "virtual-signal/up-arrow",
     desc = "Every payday, earn 6% of the quota for each contract you hold (this one included)." },
   { id = "unionrep", name = "Union Rep", rarity = "uncommon", sprite = "utility/inserter_stack_size_bonus_modifier_icon",

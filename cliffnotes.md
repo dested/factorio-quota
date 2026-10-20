@@ -53,6 +53,7 @@ mod/                         THE MOD (junctioned into .profile/mods/quota and .f
   info.json                  name quota, deps base >= 2.1.0, ! space-age
   control.lua                Events, guard() error wrapper, intro cutscene, GUI router, remote "quota"
   data.lua                   Requires prototypes/*
+  settings.lua               Map settings: mode, difficulty, length, knobs, 20 switches; per-user HUD corner
   thumbnail.png              144×144 mod-list art (terminal + QUOTA)
   prototypes/
     entities.lua             quota-terminal, quota-supply-pod, quota-meteor, quota-auditor, pad tiles, pod sprites
@@ -63,9 +64,11 @@ mod/                         THE MOD (junctioned into .profile/mods/quota and .f
   locale/en/quota.cfg        Entity/item names
   sound/*.wav                whistle, cash, trombone (from tools/make-sounds.ts)
   lib/
-    config.lua               ALL tuning: shifts, quotas, difficulties, markups, hazards, starter kit
+    config.lua               ALL tuning: shifts, quotas, difficulties, markups, hazards, starter kit, zoning
+    rules.lua                R: run rules (mode, difficulty, length, knobs, threat switches) <-> runtime-global mod settings
+    zoning.lua               Z: Complex-mode tech tiers by science pack, plots needed, disables locked vanilla techs
     util.lua                 RNG (seeded, in storage), formatting (money/time/pct), colors, fly-text, chat
-    values.lua               Item values from the recipe graph (waves), equipment vs product
+    values.lua               Item values from the recipe graph (waves), depth + pricing recipe, Complex premium
     market.lua               Prices: value × hot × flood × hooks; hot rolls; flood integration; price list
     ledger.lua               Wallet: ship (counts to quota), bonus (wallet only), spend, catalog_mult
     perks.lua                30 contracts + 5 R&D upgrades; apply() diffs force modifiers idempotently
@@ -75,16 +78,18 @@ mod/                         THE MOD (junctioned into .profile/mods/quota and .f
     events.lua               Mid-shift random events (flash sale, bounty, supply, rally, meteor, gremlin, crash, raid)
     hazards.lua              Hazard machinery: disable ledger, gremlins, strikes, quakes, meteors, raids
     auditor.lua              Final-shift boss: spawn, walk terminal to terminal, freeze, bounty
-    terminals.lua            Terminal registry, 30-tick sales sweep, labels, launch anim, company property
-    delivery.lua             Drop pods: falling anim, landing spot (off terminal pads), gifted tracking
+    terminals.lua            Terminal registry, 30-tick sales sweep, labels, launch anim, hold-while-open
+    delivery.lua             Drop pods: falling anim, landing spot, landing alert + gps pin
     world.lua                Island grid, plot types, terrain paint, rising land, FOR SALE signs, surface
     anim.lua                 storage.q.jobs dispatcher (rise, pod, launch)
     sfx.lua                  Sounds + scheduled celesta jingles
     gui/
-      common.lua             G.ui state, label/button/icon/window helpers, notify, price colors
-      hud.lua                Top-centre HUD (timer, quota bar, hot items, conditions, events, auditor)
-      catalog.lua            Catalog / Break Room window (tabs: Contracts, R&D, Supplies, Land, Market)
-      screens.lua            Orientation, Corporate Offer, Fired/Promoted end screen
+      common.lua             G.ui state, label/button/icon/window helpers, G.item_icon (recipe hover), checkbox, dropdown
+      hud.lua                Compact HUD, bottom-right by default (per-player setting quota-hud-position)
+      market_panel.lua       MP: collapsible MARKET side panel (gui.left), top 14 prices, next-shift preview in breaks
+      handbook.lua           HB: Company Handbook, every contract/condition/event/tech/crate/plot/offer + switches
+      catalog.lua            Catalog / Break Room window (tabs: Contracts, Tech, Supplies, Land, Market)
+      screens.lua            Run Setup (mode, difficulty, threats, fine print), Corporate Offer, end screen
       main.lua               Which windows each phase shows (refresh / refresh_all / update_all)
 tools/
   lualint.ts                 Lua linter (luaparse)
@@ -103,8 +108,10 @@ plans/                       Dated working docs (design doc lives here)
 | Concept / task | Location |
 | --- | --- |
 | Tune quotas, shift lengths, break, difficulties | `mod/lib/config.lua` (`C.SHIFTS`, `C.DIFFICULTIES`, `C.BREAK_SECONDS`) |
+| Modes, threat switches, presets, Run Setup knobs | `mod/lib/rules.lua` + `mod/settings.lua` (setting `quota-s-<key>` per switch) |
+| Complex zoning tiers | `mod/lib/zoning.lua`, `C.ZONING`, `C.PACK_TIERS` |
 | Starter kit / character kit / starting techs | `mod/lib/config.lua` (`C.STARTER_KIT`, `C.CHARACTER_KIT`, `C.STARTING_TECHS`) |
-| Item values / raw prices | `mod/lib/values.lua`, `C.RAW_VALUES`, `C.VALUE_OVERRIDES` |
+| Item values / raw prices | `mod/lib/values.lua`, `C.RAW_VALUES`, `C.VALUE_OVERRIDES`, `C.VALUE_SCALE`, `C.NOT_HOT` |
 | Sale price formula, flooding, hot items | `mod/lib/market.lua` |
 | Add / change a contract | `mod/lib/perks.lua` (`P.DEFS` + effect in `price_mult`/`apply`/callers) |
 | R&D catalog, crates, land prices, corporate offers | `mod/lib/shop.lua` |
@@ -153,9 +160,9 @@ an Eclipse.
 
 ### Remote interface `quota` (tests and debugging)
 
-`state, dump, start(diff), skip, advance(s), money(n), ship(n), clock_in, fire_event(id), buy(kind,a,b)→{ok,msg},
+`state, dump, start(diff | rules table), set_rules(fields), values(names), zoning(), skip, advance(s), money(n), ship(n), clock_in, fire_event(id), buy(kind,a,b)→{ok,msg},
 terminal_insert(item,n), grant_perk(id), set_conditions(ids), hazard(kind), price(item), value(item),
-reapply, endless, skip_intro, jump(n) (break only), set(key,value), gui(tab|"close"|"refresh"), select_plot(px,py)`.
+reapply, endless, skip_intro, jump(n) (break only), set(key,value), gui(tab|"orientation"|"handbook"|"close"|"refresh"), select_plot(px,py)`.
 `advance` moves the shift timer, not game ticks, so anything with a tick TTL (raid warning text) can
 outlive a debug jump.
 
@@ -186,6 +193,11 @@ outlive a debug jump.
 
 ## Status
 
-Playable end to end: orientation, 8 shifts, breaks + shop, 14 conditions (The Audit included), 8 events, Audit boss,
-endless, fired/reapply, promoted/retire. Autotest 102/102, real-client screenshots reviewed for every
-screen. Balance is tuned by arithmetic and bot runs only, not yet by a human playthrough.
+v2 (2026-10-19, plan `plans/2026-10-19-v2.md`): Run Setup (Simple 8 shifts / Complex 10 with Complexity Pays
++ zoning), 20 threat switches as map settings, Handbook, compact HUD, MARKET side panel, Company-issue items,
+terminal hold-while-open, Tech tab explainer. Autotest 119/0 across a Simple and a Complex run. The v2 GUIs
+have not been through a real-client screenshot pass yet. Sal has played v1 end to end several times.
+- A Handbook opened from the Catalog takes `player.opened`; the Catalog's on_gui_closed is ignored while the
+  Handbook is open, and closing the Handbook hands `opened` back to the Catalog.
+- Our own `settings.global` writes raise `on_runtime_mod_setting_changed`; control.lua's `writing_rules` flag
+  skips them.

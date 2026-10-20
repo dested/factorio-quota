@@ -16,6 +16,8 @@ local H = require("lib.hazards")
 local E = require("lib.events")
 local AU = require("lib.auditor")
 local SH = require("lib.shop")
+local R = require("lib.rules")
+local Z = require("lib.zoning")
 local GM = require("lib.gui.main")
 local HUD = require("lib.gui.hud")
 local CAT = require("lib.gui.catalog")
@@ -34,7 +36,7 @@ function SF.fresh_state(old)
     plots = {}, signs = {}, jobs = {}, notes = {},
     wallet = 0, shipped = 0, quota = 0, quota_met = false, quota_met_tick = nil,
     shift = 0, shift_start = 0, shift_end = 0, shift_len = 0, run_started = 0,
-    difficulty = "associate", warnings_left = 1, endless = false,
+    difficulty = "associate", warnings_left = 1, endless = false, rules = nil, zoned = {},
     stats = { total_shipped = 0, items_shipped = 0, by_item = {}, total_bonus = 0, total_spent = 0, shifts_done = 0 },
     values = {}, fluid_values = {}, equipment = {},
     hot = {}, hot_order = {}, hot_sig = 0, flood = {},
@@ -44,7 +46,7 @@ function SF.fresh_state(old)
     applied = {}, applied_recipes = {}, price_mods = { catalog = 1 },
     run_price_mult = 1, shift_price_mult = 1, quota_mult = 1, next_quota_mult = nil, extra_condition = false,
     perf_adjust = 0,
-    terminals = {}, terminal_serial = 0, terminals_bought = 0, frozen = {}, gifted = {}, disabled = {},
+    terminals = {}, terminal_serial = 0, terminals_bought = 0, frozen = {}, disabled = {},
     hz = nil, ev = nil, aud = nil,
     offers = {}, rerolls = 0, corporate = nil, corporate_seen = {},
     next = nil, report = nil, break_end = 0, break_len = 0, briefing = nil,
@@ -64,6 +66,8 @@ local function setup_force()
     lf.visible_when_disabled = false
   end
   if force.recipes["landfill"] then force.recipes["landfill"].enabled = false end
+  -- Meteors and raids leave ghosts, so a wrecked line can be rebuilt by hand.
+  force.create_ghost_on_entity_death = true
   P.apply()
 end
 
@@ -114,26 +118,36 @@ end
 -- Work out the upcoming shift (quota, length, conditions, hot items).
 -- keep = recompute quota and length but keep the previewed conditions and
 -- hot items (after a corporate deal). A Hazard Waiver adds one condition.
+-- Length (seconds) and quota of shift n of the run, before conditions and deals.
+-- The table covers 8 shifts; longer runs grow LONG_GROWTH a shift, endless ENDLESS_GROWTH.
+local function run_row(n)
+  local rows = #C.SHIFTS
+  local function row(i)
+    if i <= rows then return C.SHIFTS[i].len, C.SHIFTS[i].quota end
+    return C.SHIFTS[rows].len, C.SHIFTS[rows].quota * C.LONG_GROWTH ^ (i - rows)
+  end
+  local final = R.final()
+  if n <= final then return row(n) end
+  local _, q = row(final)
+  return C.ENDLESS_LEN, q * C.ENDLESS_GROWTH ^ (n - final)
+end
+SF.run_row = run_row
+
 function SF.prepare_next(keep)
   local q = storage.q
   local n = q.repeat_shift and q.shift or (q.shift + 1)
-  local diff = C.DIFFICULTIES[q.difficulty]
-  local len, quota
-  if n <= C.FINAL_SHIFT then
-    local row = C.SHIFTS[n]
-    len, quota = row.len, row.quota * diff.quota
-  else
-    len = C.ENDLESS_LEN
-    quota = C.SHIFTS[C.FINAL_SHIFT].quota * diff.quota * C.ENDLESS_GROWTH ^ (n - C.FINAL_SHIFT)
-  end
+  local rules = R.get()
+  local len, quota = run_row(n)
+  quota = quota * R.diff().quota * (rules.quota_scale or 1)
+  if R.complex() then quota = quota * (1 + C.COMPLEX_QUOTA_STEP * math.max(0, n - 3)) end
+  len = len * (rules.shift_len or 1)
   quota = quota * q.quota_mult + (q.perf_adjust or 0)
   if q.next_quota_mult then quota = quota * q.next_quota_mult end
   local conds
   -- A new condition (Picky Client) can change how many hot items there are.
   local keep_hot = keep and q.next and not q.add_condition_now
   if keep and q.next then
-    conds = {}
-    for _, id in ipairs(q.next.conditions) do conds[#conds + 1] = id end
+    conds = K.filter(q.next.conditions)
     if q.add_condition_now then K.add_one(n, conds) end
   else
     conds = K.roll(n)
@@ -166,29 +180,66 @@ end
 HUD.early_bonus = SF.early_bonus
 CAT.early_bonus = SF.early_bonus
 
+-- Quota met: end the shift now for a bonus on the time left. Never on the final (Audit) shift.
+function SF.clock_out_bonus()
+  local q = storage.q
+  if q.phase ~= "shift" or q.shipped < q.quota then return 0 end
+  if q.cond_active.audit or (q.shift == R.final() and not q.endless) then return 0 end
+  local secs = math.floor((q.shift_end - game.tick) / 60)
+  if secs < C.CLOCK_OUT_MIN_SECS then return 0 end
+  return math.floor(math.min(C.CLOCK_OUT_CAP, secs * C.CLOCK_OUT_RATE) * q.quota)
+end
+HUD.clock_out_bonus = SF.clock_out_bonus
+
+function SF.clock_out()
+  local q = storage.q
+  local bonus = SF.clock_out_bonus()
+  if bonus <= 0 then return false end
+  q.clocked_out = bonus
+  q.stats.clock_outs = (q.stats.clock_outs or 0) + 1
+  q.shift_end = game.tick
+  U.company({ "", "Clocked out early with ", U.money(bonus), " for the time left." })
+  SF.end_shift()
+  return true
+end
+
 -- ---------------------------------------------------------------- run ---
 
-function SF.start_run(difficulty)
+-- rules: a table from Run Setup (lib/rules.lua shape), a difficulty id (tests), or nil
+-- for whatever the mod settings say.
+function SF.start_run(rules)
   local q = storage.q
   if q.phase ~= "orientation" then return end
-  local diff = C.DIFFICULTIES[difficulty] or C.DIFFICULTIES.associate
-  q.difficulty = C.DIFFICULTIES[difficulty] and difficulty or "associate"
-  q.warnings_left = diff.warnings
+  if type(rules) == "string" then
+    local id = rules
+    rules = R.read()
+    if C.DIFFICULTIES[id] then rules.difficulty = id end
+  end
+  q.rules = R.copy(rules or R.read())
+  if not R.MODES[q.rules.mode] then q.rules.mode = "simple" end
+  if not C.DIFFICULTIES[q.rules.difficulty] then q.rules.difficulty = "associate" end
+  local diff = R.diff()
+  q.difficulty = q.rules.difficulty
+  q.warnings_left = R.warnings()
   q.run_started = game.tick
   q.shift = 0
+  Z.apply()
   SF.prepare_next(false)
   for _, p in pairs(U.players()) do
     SF.place_player(p)
     if p.character then
       for _, it in ipairs(C.CHARACTER_KIT) do
         p.insert({ name = it[1], count = it[2] })
-        D.mark_gifted(it[1], it[2])
       end
     end
   end
-  D.drop(C.STARTER_KIT, { label = "Starter Kit", gifted = true })
-  U.company({ "", "Welcome aboard. Difficulty: ", diff.name, ". Your starter kit is on its way down. Shift 1 starts in ",
+  D.drop(C.STARTER_KIT, { label = "Starter Kit" })
+  U.company({ "", "Welcome aboard. ", R.mode_def().name, " mode, ", diff.name, ", ", R.final(),
+    " shifts. Your starter kit is on its way down. Shift 1 starts in ",
     C.BRIEFING_SECONDS, " seconds: grab the kit, look around, clock in when you're ready." })
+  if R.complex() then
+    U.company("Zoning is in force: oil and plastics need 2 plots of land, chemical science 4, production science 6.")
+  end
   SF.start_briefing()
 end
 
@@ -299,7 +350,11 @@ function SF.end_shift()
       q.perk_state.workaholic = (q.perk_state.workaholic or 0) + 1
       add_line(rep, "Workaholic: prices +" .. (6 * q.perk_state.workaholic) .. "% for good", nil, { 0.6, 0.9, 1 })
     end
-    if q.shift == C.FINAL_SHIFT and not q.endless then outcome = "promoted" end
+    if q.clocked_out then
+      add_line(rep, "Clocked out early", q.clocked_out)
+      payday = payday + q.clocked_out
+    end
+    if q.shift == R.final() and not q.endless then outcome = "promoted" end
   else
     if P.has("parachute") then
       local keep = {}
@@ -313,15 +368,15 @@ function SF.end_shift()
     else
       outcome = "fired"
     end
-    if outcome ~= "fired" and q.shift == C.FINAL_SHIFT and not q.endless then
+    if outcome ~= "fired" and q.shift == R.final() and not q.endless then
       q.repeat_shift = true
-      add_line(rep, "The Audit is not over. You'll redo shift " .. q.shift .. ".", nil, { 1, 0.6, 0.4 })
+      add_line(rep, "The final shift is not over. You'll redo shift " .. q.shift .. ".", nil, { 1, 0.6, 0.4 })
     end
   end
 
+  q.clocked_out = nil
   if outcome ~= "fired" then q.stats.shifts_done = (q.stats.shifts_done or 0) + 1 end
   M.decay_flood()
-  T.decay_gifted()
   q.report = rep
 
   if outcome == "fired" then
@@ -366,11 +421,12 @@ function SF.start_break(met)
   local q = storage.q
   q.phase = "break"
   q.briefing = nil
-  q.break_len = C.BREAK_SECONDS * 60
+  q.break_len = R.break_secs() * 60
   q.break_end = game.tick + q.break_len
   q.rerolls = 0
   SH.roll_offers()
-  if C.CORPORATE_OFFER_AFTER[q.shift] and not q.corporate_seen[q.shift] and not q.endless then
+  local corp = q.shift > 0 and q.shift % 3 == 0 and q.shift < R.final()
+  if corp and not q.corporate_seen[q.shift] and not q.endless then
     q.corporate_seen[q.shift] = true
     SH.roll_corporate()
   end
@@ -378,7 +434,7 @@ function SF.start_break(met)
   if met then
     S.jingle("payday")
     U.company({ "", "Shift ", q.report.n, " done: ", U.money(q.report.shipped), " shipped. Take a break. Next shift in ",
-      C.BREAK_SECONDS, " seconds." })
+      R.break_secs(), " seconds." })
   else
     S.jingle("warn")
     U.company({ "", "[color=255,90,80]Quota missed.[/color] This goes in your file." })

@@ -24,17 +24,22 @@ local function st() return call("state") end
 
 local VALUE_PROBE = {
   "iron-ore", "iron-plate", "copper-plate", "steel-plate", "stone-brick", "iron-gear-wheel", "copper-cable",
-  "electronic-circuit", "advanced-circuit", "processing-unit", "plastic-bar", "engine-unit", "electric-engine-unit",
+  "electronic-circuit", "advanced-circuit", "processing-unit", "plastic-bar", "engine-unit", "electric-engine-unit", "shotgun-shell",
   "automation-science-pack", "logistic-science-pack", "chemical-science-pack", "transport-belt", "inserter",
   "assembling-machine-1", "firearm-magazine", "piercing-rounds-magazine", "solid-fuel", "rocket-fuel", "battery",
   "sulfur", "flying-robot-frame", "low-density-structure", "uranium-235", "raw-fish", "wood", "barrel",
 }
 
-local function dump_values()
+local function dump_values(tag)
+  local v = call("values", VALUE_PROBE)
   for _, n in ipairs(VALUE_PROBE) do
-    out("VALUE", n, string.format("%.2f", call("value", n)))
+    local e = v[n]
+    out("VALUE", tag, n, string.format("%.2f", e.base), "depth", e.depth, "premium", string.format("%.2f", e.premium),
+      "recipe", e.recipe)
   end
 end
+
+local THREAT_CONDS = { meteors = true, gremlins = true, quakes = true, strike = true, raids = true, audit = true }
 
 -- One scripted step per second. Each step returns the number of seconds to wait.
 local plan = {}
@@ -47,6 +52,13 @@ local function shift_body(n, opts)
     check(s.phase == "shift", "shift " .. n .. " running (phase=" .. tostring(s.phase) .. ")")
     check(s.shift == n, "shift number " .. n .. " (got " .. tostring(s.shift) .. ")")
     out("SHIFT", n, "quota", s.quota, "conditions", s.conditions, "hot", s.hot, "wallet", math.floor(s.wallet))
+    if n < 4 then
+      local early = false
+      for _, id in ipairs(s.conditions or {}) do
+        if id == "meteors" or id == "gremlins" then early = true end
+      end
+      check(not early, "no meteor shower or gremlins before shift 4 (shift " .. n .. ")")
+    end
     -- Real sales through the terminal (a trickle on shifts we mean to miss).
     if opts.miss then
       call("terminal_insert", "iron-plate", 5)
@@ -117,6 +129,15 @@ local function shift_body(n, opts)
       if need > 0 then call("ship", need) end
       local s2 = st()
       check(s2.shipped >= s2.quota, "quota met in shift " .. n)
+      if opts.clock_out then
+        local bonus = call("clock_out_bonus")
+        local w = s2.wallet
+        check(bonus > 0 and call("clock_out"), "clocked out early in shift " .. n .. " for " .. tostring(bonus))
+        local s3 = st()
+        check(s3.phase == "break" and s3.wallet >= w + bonus - 1, "clock-out bonus paid and break started")
+        return 2
+      end
+      if opts.audit then check(call("clock_out_bonus") == 0, "no clocking out of The Audit") end
     end
     call("skip")
     return 2
@@ -232,8 +253,8 @@ step(function()
   check(s.phase == "orientation", "starts in orientation")
   check(s.plots == 1, "owns the HQ plot")
   check(s.terminals == 1, "HQ terminal registered")
-  dump_values()
-  call("start", "associate")
+  call("start", { mode = "simple", difficulty = "associate" })
+  dump_values("simple")
   return 2
 end)
 step(function()
@@ -241,6 +262,10 @@ step(function()
   check(s.phase == "break" and s.briefing == true and s.next and s.next.n == 1,
     "briefing before shift 1 (phase=" .. tostring(s.phase) .. ")")
   check(#(s.offers or {}) == 0, "no contracts on the table in the briefing")
+  check(s.mode == "simple" and s.final == 8, "simple mode, 8 shifts (" .. tostring(s.mode) .. ", " .. tostring(s.final) .. ")")
+  check(call("value", "firearm-magazine") > 2, "crafted ammo keeps its value")
+  local z = call("zoning")
+  check(z.licensed >= 4 and z.rnd.oil == false, "simple mode: no zoning locks")
   call("clock_in")
   return 1
 end)
@@ -256,7 +281,7 @@ step(function()
 end)
 
 for n = 1, 8 do
-  shift_body(n, { miss = (n == 3), audit = (n == 8) })
+  shift_body(n, { miss = (n == 3), audit = (n == 8), clock_out = (n == 2) })
   if n < 8 then break_body(n) end
 end
 step(function()
@@ -288,18 +313,58 @@ step(function()
   check(s.phase == "orientation", "reapply returns to orientation")
   check(s.plots == 1, "fresh island")
   check(s.terminals == 1, "fresh terminal")
-  call("start", "crunch")
+  -- Second run: Complex, Crunch, every threat switched off.
+  call("start", { mode = "complex", difficulty = "crunch",
+    off = { meteors = true, gremlins = true, quakes = true, strike = true, raids = true, nests = true, audit = true } })
   return 5
 end)
 step(function()
   local s = st()
   check(s.phase == "break" and s.briefing == true, "briefing before the new run")
+  check(s.mode == "complex" and s.final == 10, "complex mode, 10 shifts (" .. tostring(s.mode) .. ", " .. tostring(s.final) .. ")")
+  dump_values("complex")
+  local z = call("zoning")
+  out("ZONING", z)
+  check(z.bought == 0 and type(z.rnd.oil) == "string", "complex: Oil Industry zoned with no plots (" .. tostring(z.rnd.oil) .. ")")
+  check(z.tech["oil-processing"] and z.tech["oil-processing"].enabled == false, "complex: oil-processing disabled in the tech tree")
+  check(type(z.rnd.greensci) ~= "string" or not z.rnd.greensci:find("Zoning"), "complex: green science not zoned")
+  call("money", 500000)
+  local n = 0
+  for _ = 1, 3 do
+    for px = -2, 2 do
+      for py = -2, 2 do
+        if n < 2 and call("buy", "plot", px, py).ok then n = n + 1 end
+      end
+    end
+  end
+  local z2 = call("zoning")
+  out("ZONING after plots", z2)
+  check(z2.bought == 2 and z2.rnd.oil == false, "complex: two plots license Oil Industry")
+  check(z2.tech["oil-processing"].enabled == true, "complex: oil-processing re-enabled")
+  check(type(z2.rnd.bluesci) == "string", "complex: blue science still zoned at 2 plots")
+  -- With every threat off, no threat condition rolls (shift 5+ rolls two on Crunch).
+  local clean = true
+  for i = 1, 6 do
+    call("jump", 4 + i)
+    local nx = st().next
+    out("ROLL", nx.n, nx.conditions)
+    for _, id in ipairs(nx.conditions or {}) do
+      if THREAT_CONDS[id] then clean = false end
+    end
+  end
+  check(clean, "threat switches off: no threat conditions roll")
+  call("jump", 10)
+  local fin = st().next
+  local audit = false
+  for _, id in ipairs(fin.conditions or {}) do if id == "audit" then audit = true end end
+  check(not audit, "audit switched off: the final shift has no Auditor")
+  call("jump", 5)
   -- Let it run out instead of clocking in.
   return 30
 end)
 step(function()
   local s = st()
-  check(s.phase == "shift" and s.shift == 1, "new run shift 1 running")
+  check(s.phase == "shift" and s.shift == 5, "new run shift 5 running (" .. tostring(s.phase) .. " " .. tostring(s.shift) .. ")")
   out("DONE")
   return 9999
 end)

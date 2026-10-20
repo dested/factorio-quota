@@ -98,6 +98,7 @@ local HOT_TYPES = { item = true, tool = true, ammo = true, module = true }
 local function hot_eligible(name)
   local proto = prototypes.item[name]
   return proto ~= nil and HOT_TYPES[proto.type] == true and not name:find("barrel", 1, true)
+    and not C.NOT_HOT[name]
 end
 M.hot_eligible = hot_eligible
 
@@ -188,6 +189,36 @@ function M.best_seller()
     if v > best_v then best, best_v = name, v end
   end
   return best, best_v
+end
+
+-- Price of one unit next shift (break preview): next shift's hot list, flood as it stands.
+function M.next_price(name)
+  local q = storage.q
+  local base = V.base(name)
+  if base <= 0 then return 0 end
+  local m = q.next and q.next.hot[name]
+  return base * (m and M.boosted(m) or 1) * M.flood_mult(name) * M.other_mult(name)
+end
+
+-- Rows for the market side panel: the n best-paying products right now (or next shift).
+function M.top(n, preview)
+  local q = storage.q
+  local hot = preview and q.next and q.next.hot or q.hot
+  local rows = {}
+  for _, name in ipairs(M.makeable()) do
+    local price = preview and M.next_price(name) or M.price(name)
+    if price > 0 then
+      local m = hot[name]
+      rows[#rows + 1] = { name = name, price = price, hot = m and M.boosted(m), flood = M.flood_mult(name) }
+    end
+  end
+  table.sort(rows, function(a, b)
+    if a.price ~= b.price then return a.price > b.price end
+    return a.name < b.name
+  end)
+  local out = {}
+  for i = 1, math.min(n, #rows) do out[i] = rows[i] end
+  return out
 end
 
 -- Price table for the Market tab: makeable products plus anything sold this run.

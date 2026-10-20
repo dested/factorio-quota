@@ -1,10 +1,13 @@
--- Full-screen moments: orientation, corporate offers, fired and promoted.
+-- Full-screen moments: Run Setup, corporate offers, fired and promoted.
 
 local C = require("lib.config")
 local U = require("lib.util")
 local P = require("lib.perks")
 local W = require("lib.world")
 local SH = require("lib.shop")
+local K = require("lib.conditions")
+local E = require("lib.events")
+local R = require("lib.rules")
 local G = require("lib.gui.common")
 
 local SC = {}
@@ -13,63 +16,215 @@ local ORIENT = "quota_orientation"
 local CORP = "quota_corporate"
 local ENDS = "quota_end"
 
--- -------------------------------------------------------- orientation ---
+-- ---------------------------------------------------------- run setup ---
+-- Replaces the old difficulty pick. The draft lives in G.ui(player).setup until TAKE THE JOB
+-- writes it to the mod settings and starts the run.
 
 local RULES = {
-  { "item/quota-terminal", "Every shift has a timer and a quota. Put products in the Shipping Terminal at the centre of your island. It pays market price, live." },
-  { "virtual-signal/signal-white-flag", "Miss a quota and you get a written warning. Miss one with no warnings left and you're fired." },
-  { "virtual-signal/signal-clock", "Between shifts you get a 90 second break. Shop: Contracts (perks that bend the rules), R&D (instant tech), Supplies (machines by drop pod) and Land." },
-  { "virtual-signal/signal-fire", "Crafted goods are worth more than their ingredients. Hot items sell for x2 to x3. Sell too much of one thing and its price floods." },
-  { "virtual-signal/signal-skull", "From shift 2 every shift has a Condition: gremlins, strikes, earthquakes, meteors, raids. Shift 8 is The Audit." },
-  { "virtual-signal/signal-info", "Machinery sells for scrap, and the starter kit is Company property. Press J for the Catalog any time (25% rush fee mid-shift)." },
+  { "item/quota-terminal", "Every shift has a timer and a quota. Products in the Shipping Terminal sell at market price, live. Open the terminal to hold a sale: nothing ships while you're looking inside." },
+  { "virtual-signal/signal-white-flag", "Miss a quota and you get a written warning. Miss one with none left and you're fired. The last shift is The Audit." },
+  { "item/cargo-landing-pad", "Between shifts, shop in the Catalog (J): Contracts, Tech Licenses (buy Factorio research outright), machines and land. Purchases fall from orbit in a drop pod, right next to you." },
+  { "virtual-signal/signal-fire", "Crafted goods pay more than their ingredients. Hot items pay x2 to x3; flooding one item drops its price. The MARKET panel on the left shows the best payers." },
 }
 
 function SC.close_orientation(player)
   G.destroy(player, ORIENT)
 end
 
+-- The setup draft for this player (starts from the mod settings).
+function SC.setup_draft(player)
+  local s = G.ui(player)
+  if not s.setup then s.setup = R.read() end
+  return s.setup
+end
+
+local function knob_caption(k, v)
+  if k.key == "shifts" then
+    if v == "auto" then return "Mode default" end
+    return v .. " shifts"
+  elseif k.key == "warnings" then
+    if v == "auto" then return "Difficulty default" end
+    return v == "1" and "1 warning" or (v .. " warnings")
+  elseif k.key == "break_secs" then
+    return v .. " s"
+  end
+  return "x" .. v
+end
+
+-- Dropdown captions for a knob and the index of `value` (appended when the settings hold an odd value).
+function SC.knob_items(k, value)
+  local items, index = {}, nil
+  for i, c in ipairs(k.choices) do
+    items[i] = knob_caption(k, tostring(c))
+    if tostring(c) == tostring(value) then index = i end
+  end
+  if not index then
+    items[#items + 1] = knob_caption(k, tostring(value))
+    index = #items
+  end
+  return items, index
+end
+
+local function switch_name(sw)
+  if sw.name then return sw.name, sw.sprite, sw.desc end
+  local id = (sw.conds and sw.conds[1]) or (sw.events and sw.events[1])
+  local d = (sw.conds and K.BY_ID[id]) or E.BY_ID[id]
+  if d then return d.name, d.sprite, d.desc end
+  return sw.key, nil, nil
+end
+SC.switch_name = switch_name
+
+local function section(parent, title)
+  local f = parent.add({ type = "frame", style = "quota_section_frame", direction = "vertical" })
+  G.label(f, title, "heading_2_label")
+  return f
+end
+
+-- Which preset (if any) the draft's switches match exactly.
+local function active_preset(draft)
+  for _, pr in ipairs(R.PRESETS) do
+    local want = R.preset_off(pr.id)
+    local same = true
+    for _, sw in ipairs(R.SWITCHES) do
+      if (want[sw.key] or false) ~= (draft.off[sw.key] or false) then same = false end
+    end
+    if same then return pr.id end
+  end
+  return nil
+end
+
+local SETUP_W = 880
+local COL_L = 410
+local COL_R = 430
+
 function SC.orientation(player)
   SC.close_orientation(player)
-  local s = G.ui(player)
+  local draft = SC.setup_draft(player)
+  local scale = player.display_scale > 0 and player.display_scale or 1
+  local screen_w = math.floor(player.display_resolution.width / scale)
+  local screen_h = math.floor(player.display_resolution.height / scale)
+
   local frame = player.gui.screen.add({ type = "frame", name = ORIENT, direction = "vertical" })
   frame.auto_center = true
-  frame.style.width = 680
-  frame.style.padding = 16
-  local title = G.label(frame, "QUOTA", "quota_timer_label", { color = { 1, 0.78, 0.2 } })
-  title.style.font = "quota-huge"
-  G.label(frame, "The Factory Must Grow (Or Else)", "quota_mid_label")
-  frame.add({ type = "line" }).style.top_margin = 6
-  G.label(frame, "Welcome to The Company, contractor. Here is the deal.", "bold_label").style.top_margin = 4
+  frame.style.width = math.min(SETUP_W, screen_w - 20)
+  frame.style.maximal_height = screen_h - 40
+  frame.style.padding = 10
 
-  local list = frame.add({ type = "flow", direction = "vertical" })
-  list.style.vertical_spacing = 6
-  list.style.top_margin = 6
+  local head = frame.add({ type = "flow", direction = "horizontal" })
+  head.style.vertical_align = "center"
+  head.drag_target = frame
+  local title = G.label(head, "QUOTA", "quota_title_label", { color = { 1, 0.78, 0.2 } })
+  title.ignored_by_interaction = true
+  local sub = G.label(head, "The Factory Must Grow (Or Else)", "quota_mid_label")
+  sub.style.left_margin = 10
+  sub.ignored_by_interaction = true
+  G.pusher(head)
+
+  -- Everything between the title and the footer scrolls on short screens.
+  local body = frame.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto" })
+  body.style.maximal_height = screen_h - 160
+  body.style.horizontally_stretchable = true
+
+  local list = body.add({ type = "table", column_count = 2 })
+  list.style.horizontal_spacing = 10
+  list.style.vertical_spacing = 2
   for _, r in ipairs(RULES) do
     local row = list.add({ type = "flow", direction = "horizontal" })
     row.style.vertical_align = "center"
-    row.style.horizontal_spacing = 10
-    G.icon(row, r[1], 36, nil, nil, "transparent_slot")
-    G.label(row, r[2], "label", { wrap = true, width = 590 })
+    row.style.horizontal_spacing = 6
+    G.icon(row, r[1], 28, nil, nil, "transparent_slot")
+    G.label(row, r[2], "label", { wrap = true, width = (SETUP_W - 110) / 2 })
   end
 
-  frame.add({ type = "line" }).style.top_margin = 8
-  G.label(frame, "Pick your contract", "heading_2_label")
-  local df = frame.add({ type = "flow", direction = "horizontal" })
-  df.style.horizontal_spacing = 8
+  local cols = body.add({ type = "flow", direction = "horizontal" })
+  cols.style.horizontal_spacing = 8
+  cols.style.top_margin = 6
+  local left = cols.add({ type = "flow", direction = "vertical" })
+  left.style.width = COL_L
+  left.style.vertical_spacing = 6
+  local right = cols.add({ type = "flow", direction = "vertical" })
+  right.style.width = COL_R
+  right.style.vertical_spacing = 6
+
+  -- Mode
+  local mode = section(left, "Mode")
+  local cards = mode.add({ type = "flow", direction = "horizontal" })
+  cards.style.horizontal_spacing = 6
+  for _, id in ipairs(R.MODE_ORDER) do
+    local m = R.MODES[id]
+    local card = cards.add({ type = "frame", style = "quota_mode_card", direction = "vertical" })
+    card.style.width = (COL_L - 30) / 2
+    local b = G.button(card, m.name, "setup_mode", { id = id }, "button")
+    b.style.horizontally_stretchable = true
+    b.toggled = draft.mode == id
+    for _, line in ipairs(m.lines) do G.label(card, line, "label", { wrap = true, width = (COL_L - 30) / 2 - 16 }) end
+    G.label(card, m.blurb, "label", { wrap = true, width = (COL_L - 30) / 2 - 16,
+      color = id == "simple" and { 0.5, 1, 0.55 } or { 0.7, 0.7, 0.7 } })
+  end
+
+  -- Difficulty
+  local diff = section(left, "Difficulty")
+  local df = diff.add({ type = "flow", direction = "horizontal" })
+  df.style.horizontal_spacing = 6
   for _, id in ipairs(C.DIFFICULTY_ORDER) do
     local d = C.DIFFICULTIES[id]
-    local b = G.button(df, d.name, "difficulty", { id = id }, "button")
-    b.style.width = 200
-    b.toggled = s.difficulty == id
+    local b = G.button(df, d.name, "setup_diff", { id = id }, "button", { width = (COL_L - 40) / 3 })
+    b.toggled = draft.difficulty == id
   end
-  local d = C.DIFFICULTIES[s.difficulty]
-  G.label(frame, { "", d.blurb, "  Quotas x", d.quota, "." }, "label", { color = { 0.8, 0.8, 0.8 } })
+  local d = C.DIFFICULTIES[draft.difficulty] or C.DIFFICULTIES.associate
+  G.label(diff, { "", d.blurb, "  Quotas x", d.quota, "." }, "label", { wrap = true, width = COL_L - 30, color = { 0.8, 0.8, 0.8 } })
+
+  -- Fine print
+  local fine = section(left, "Fine print")
+  local ft = fine.add({ type = "table", column_count = 2 })
+  ft.style.horizontal_spacing = 8
+  ft.style.vertical_spacing = 2
+  for _, k in ipairs(R.KNOBS) do
+    G.label(ft, k.name, "label", { width = 150 })
+    local items, index = SC.knob_items(k, draft[k.key])
+    local dd = G.dropdown(ft, items, index, "setup_knob", { key = k.key })
+    dd.style.width = COL_L - 190
+  end
+
+  -- Threats
+  local th = section(right, "Threats and events")
+  G.label(th, "Tick what can happen this run. Presets tick the boxes for you:", "label",
+    { wrap = true, width = COL_R - 30, color = { 0.75, 0.75, 0.75 } })
+  local pf = th.add({ type = "flow", direction = "horizontal" })
+  pf.style.horizontal_spacing = 4
+  local current = active_preset(draft)
+  for _, pr in ipairs(R.PRESETS) do
+    local b = G.button(pf, pr.name, "setup_preset", { id = pr.id }, "button", { tooltip = pr.desc, width = (COL_R - 38) / 3 })
+    b.toggled = current == pr.id
+  end
+  local groups = {
+    { "threats", "Threats" }, { "conditions", "Market conditions" }, { "events", "Mid-shift events" },
+  }
+  for _, g in ipairs(groups) do
+    G.label(th, g[2], "bold_label", { color = { 0.75, 0.75, 0.75 } }).style.top_margin = 2
+    local t = th.add({ type = "table", column_count = 3 })
+    t.style.horizontal_spacing = 4
+    t.style.vertical_spacing = 0
+    for _, sw in ipairs(R.SWITCHES) do
+      if sw.group == g[1] then
+        local name, sprite, desc = switch_name(sw)
+        local cap = sprite and { "", "[img=", sprite, "] ", name } or name
+        local cb = G.checkbox(t, cap, not draft.off[sw.key], "setup_switch", { key = sw.key },
+          desc and { "", "[font=default-bold]", name, "[/font]\n", desc } or nil)
+        cb.style.width = math.floor((COL_R - 40) / 3)
+      end
+    end
+  end
+  G.label(th, "Change them mid-run in the Handbook; they apply from the next shift.",
+    "label", { wrap = true, width = COL_R - 30, color = { 0.6, 0.6, 0.6 } })
 
   local foot = frame.add({ type = "flow", direction = "horizontal" })
-  foot.style.top_margin = 10
+  foot.style.top_margin = 8
   foot.style.vertical_align = "center"
-  G.label(foot, { "", "A starter kit drops from orbit, then you get ", C.BRIEFING_SECONDS, " seconds to look around." }, "label",
-    { color = { 0.7, 0.85, 1 } })
+  G.button(foot, "Handbook", "open_handbook", nil, "button", { tooltip = "Every contract, condition, event, tech, crate and plot." })
+  local sum = G.label(foot, R.describe(draft), "bold_label", { color = { 1, 0.85, 0.35 } })
+  sum.style.left_margin = 10
+  sum.tooltip = { "", "A starter kit drops from orbit, then you get ", C.BRIEFING_SECONDS, " seconds to look around." }
   G.pusher(foot)
   G.button(foot, "TAKE THE JOB", "start_run", nil, "quota_clockin_button")
 end
@@ -141,7 +296,7 @@ local function stat_rows(parent)
     { "Golden Gear jackpots", tostring(q.stats.jackpots or 0) },
     { "The Auditor", q.stats.auditor_killed and "Defeated" or "Survived" },
     { "Time on the clock", U.time(played) },
-    { "Difficulty", C.DIFFICULTIES[q.difficulty].name },
+    { "Rules", R.describe() },
   }
   for _, r in ipairs(rows) do
     G.label(t, r[1], "label", { color = { 0.75, 0.75, 0.75 } })

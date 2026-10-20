@@ -34,7 +34,7 @@ W.TYPES = {
   flat = { name = "Zoned Industrial", sprite = "item/stone-brick", base = 300,
     desc = "Flat, empty and ready to build on." },
   oil = { name = "Oil Field", sprite = "fluid/crude-oil", base = 1500,
-    desc = "Crude oil wells. You will need Oil Industry from R&D." },
+    desc = "Crude oil wells. You will need the Oil Industry tech." },
   ruins = { name = "Abandoned Facility", sprite = "item/iron-gear-wheel", base = 700,
     desc = "A previous contractor's site. They left in a hurry. Loot inside." },
   infested = { name = "Infested Swamp", sprite = "virtual-signal/signal-skull", base = 240,
@@ -440,6 +440,8 @@ function W.place_features(surface, plot)
         local d = 5 + U.random() * 8
         place(surface, "crash-site-spaceship-wreck-small-" .. U.random(1, 6), { f.x + math.cos(a) * d, f.y + math.sin(a) * d })
       end
+    elseif f.kind == "nests" and storage.q.rules and storage.q.rules.off and storage.q.rules.off.nests then
+      -- Swamp nests switched off: just the rich ore.
     elseif f.kind == "nests" then
       for i = 1, f.spawners do
         local a = (i / f.spawners) * 2 * math.pi

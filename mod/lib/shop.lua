@@ -10,6 +10,7 @@ local L = require("lib.ledger")
 local W = require("lib.world")
 local D = require("lib.delivery")
 local S = require("lib.sfx")
+local Z = require("lib.zoning")
 
 local SH = {}
 
@@ -62,6 +63,8 @@ SH.RND = {
     techs = { "chemical-science-pack" }, desc = "Blue science packs. Unlocks the late catalog." },
   { id = "power2", name = "Substations", tech = "electric-energy-distribution-2", price = 2800, requires = "bluesci",
     techs = { "electric-energy-distribution-2" }, desc = "Substations." },
+  { id = "efurnace", name = "Electric Furnaces", tech = "advanced-material-processing-2", price = 3500, requires = "bluesci",
+    techs = { "advanced-material-processing-2" }, desc = "Electric furnaces: steel-furnace speed, no fuel, two module slots." },
   { id = "advoil", name = "Advanced Oil", tech = "advanced-oil-processing", price = 2500, requires = "bluesci",
     techs = { "advanced-oil-processing" }, desc = "Advanced oil processing and cracking." },
   { id = "lasers", name = "Laser Turrets", tech = "laser-turret", price = 4500, requires = "bluesci",
@@ -75,7 +78,7 @@ SH.RND = {
   { id = "uranium", name = "Uranium Processing", tech = "uranium-processing", price = 5000, requires = "bluesci",
     techs = { "uranium-mining", "uranium-processing" }, desc = "Mine uranium with acid, spin it in centrifuges." },
   { id = "prodsci", name = "Production Science", tech = "production-science-pack", price = 7000, requires = "modules",
-    techs = { "production-science-pack" }, desc = "Purple science, electric furnaces, rails." },
+    techs = { "production-science-pack" }, desc = "Purple science packs (and rails). A fortune per pack." },
   { id = "logistics3", name = "Express Belts", tech = "logistics-3", price = 7500, requires = "prodsci",
     techs = { "logistics-3" }, desc = "Express transport belts." },
   { id = "automation3", name = "Assembler 3", tech = "automation-3", price = 8000, requires = "prodsci",
@@ -98,11 +101,28 @@ function SH.rnd_owned(entry)
   return true
 end
 
+-- Why an R&D entry can't be bought yet (prerequisite entry or zoning), or nil.
 function SH.rnd_locked(entry)
-  if not entry.requires then return nil end
-  local req = SH.RND_BY_ID[entry.requires]
-  if req and not SH.rnd_owned(req) then return req end
-  return nil
+  if entry.requires then
+    local req = SH.RND_BY_ID[entry.requires]
+    if req and not SH.rnd_owned(req) then return "Needs " .. req.name end
+  end
+  return Z.lock(entry)
+end
+
+-- Recipes the entry's technologies unlock (for the hover icons).
+function SH.rnd_unlocks(entry)
+  local out, seen = {}, {}
+  for _, name in ipairs(entry.techs) do
+    local proto = prototypes.technology[name]
+    for _, eff in ipairs(proto and proto.effects or {}) do
+      if eff.type == "unlock-recipe" and eff.recipe and not seen[eff.recipe] and prototypes.recipe[eff.recipe] then
+        seen[eff.recipe] = true
+        out[#out + 1] = eff.recipe
+      end
+    end
+  end
+  return out
 end
 
 function SH.rnd_price(entry)
@@ -125,14 +145,14 @@ function SH.buy_rnd(id)
   if not entry then return false, "Unknown item." end
   if SH.rnd_owned(entry) then return false, "Already researched." end
   local lock = SH.rnd_locked(entry)
-  if lock then return false, "Requires " .. lock.name .. " first." end
+  if lock then return false, lock .. "." end
   local price = SH.rnd_price(entry)
   if not L.spend(price) then return false, "Not enough money." end
   local seen = {}
   for _, t in ipairs(entry.techs) do research(t, seen) end
   storage.q.stats.rnd = (storage.q.stats.rnd or 0) + 1
   S.jingle("buy")
-  U.company({ "", "R&D delivered: [technology=", entry.tech, "]" })
+  U.company({ "", "Tech licensed and researched: [technology=", entry.tech, "]" })
   return true, entry.name .. " researched."
 end
 
@@ -182,8 +202,10 @@ SH.CRATES = {
     items = { { "assembling-machine-1", 8, alt = "assembling-machine-2" } } },
   { id = "smelting", name = "Smelting Column", sprite = "item/stone-furnace",
     items = { { "stone-furnace", 24, alt = "steel-furnace" } } },
-  { id = "power", name = "Steam Power Plant", sprite = "item/steam-engine",
-    items = { { "offshore-pump", 1 }, { "boiler", 5 }, { "steam-engine", 10 }, { "pipe", 20 } } },
+  { id = "power", name = "Steam Expansion", sprite = "item/steam-engine",
+    items = { { "boiler", 1 }, { "steam-engine", 2 }, { "pipe", 10 } } },
+  { id = "powerplant", name = "Steam Power Plant", sprite = "item/boiler",
+    items = { { "offshore-pump", 1 }, { "boiler", 4 }, { "steam-engine", 8 }, { "pipe", 30 } } },
   { id = "defense", name = "Security Kit", sprite = "item/gun-turret",
     items = { { "gun-turret", 4 }, { "firearm-magazine", 100, alt = "piercing-rounds-magazine" }, { "stone-wall", 60 } } },
   { id = "fastbelts", name = "Fast Belt Bundle", sprite = "item/fast-transport-belt", needs = "fast-transport-belt",
@@ -239,10 +261,10 @@ function SH.buy_crate(id)
   if not c then return false, "Unknown crate." end
   if not SH.crate_available(c) then return false, "Not unlocked yet." end
   if not L.spend(SH.crate_price(c)) then return false, "Not enough money." end
-  D.drop(SH.crate_items(c), { label = c.name, gifted = true })
+  D.drop(SH.crate_items(c), { label = c.name })
   storage.q.stats.crates = (storage.q.stats.crates or 0) + 1
   S.jingle("buy")
-  return true, c.name .. " is on its way down."
+  return true, c.name .. ": drop pod inbound, landing next to you."
 end
 
 -- Mystery crate: a gamble, usually worth it.
@@ -273,9 +295,9 @@ function SH.buy_mystery()
     count = math.min(count, prototypes.item[n].stack_size * 2)
     items[#items + 1] = { n, count }
   end
-  D.drop(items, { label = "Mystery Crate", gifted = true })
+  D.drop(items, { label = "Mystery Crate" })
   S.jingle("buy")
-  return true, "A mystery crate is on its way down."
+  return true, "Mystery Crate: drop pod inbound, landing next to you."
 end
 
 function SH.terminal_price()
@@ -286,9 +308,9 @@ end
 function SH.buy_terminal()
   if not L.spend(SH.terminal_price()) then return false, "Not enough money." end
   storage.q.terminals_bought = (storage.q.terminals_bought or 0) + 1
-  D.drop({ { "quota-terminal", 1 } }, { label = "Shipping Terminal", gifted = false })
+  D.drop({ { "quota-terminal", 1 } }, { label = "Shipping Terminal", issue = false })
   S.jingle("buy")
-  return true, "A new Shipping Terminal is on its way down. Place it anywhere."
+  return true, "Shipping Terminal: drop pod inbound, landing next to you. Place it anywhere."
 end
 
 -- ============================================================== Land ===
@@ -304,10 +326,16 @@ function SH.buy_plot(px, py)
   if not W.purchasable(px, py) then return false, "Only plots next to your land are for sale." end
   local price = SH.plot_price(plot)
   if not L.spend(price) then return false, "Not enough money." end
+  local before = Z.licensed()
   W.claim(px, py, false)
   storage.q.stats.plots = (storage.q.stats.plots or 0) + 1
   S.jingle("land")
   U.company({ "", "Deed transferred: ", W.TYPES[plot.type].name, ". Watch it rise." })
+  Z.apply()
+  if Z.licensed() > before then
+    U.company({ "", "[color=100,255,110]Zoning approved:[/color] tier ", Z.licensed(),
+      " technology is now licensed. Check the Tech tab." })
+  end
   return true, W.TYPES[plot.type].name .. " is rising from the sea."
 end
 
@@ -393,18 +421,24 @@ end
 
 SH.OFFERS = {
   { id = "buyout", name = "Leveraged Buyout", sprite = "virtual-signal/signal-percent",
+    blurb = "Cash now (75% of the next quota). Every future quota is 15% higher.",
     text = function(c) return "Get " .. U.money(c) .. " right now. Every future quota is 15% higher." end,
     cash = 0.75 },
   { id = "options", name = "Stock Options", sprite = "virtual-signal/up-arrow",
+    blurb = "+1 contract slot. Every future quota is 10% higher.",
     text = function() return "+1 contract slot. Every future quota is 10% higher." end },
   { id = "waiver", name = "Hazard Waiver", sprite = "virtual-signal/signal-skull",
+    blurb = "Cash now (50% of the next quota). Every shift from now on has one extra condition.",
     text = function(c) return "Get " .. U.money(c) .. " right now. Every shift from now on has one extra condition." end,
     cash = 0.5 },
   { id = "outsourcing", name = "Outsourcing", sprite = "virtual-signal/signal-shuffle",
+    blurb = "Your next quota is 40% lower. Everything sells for 12% less for the rest of the run.",
     text = function() return "Your next quota is 40% lower. Everything sells for 12% less for the rest of the run." end },
   { id = "fraud", name = "Insurance Fraud", sprite = "virtual-signal/signal-white-flag",
+    blurb = "Gain one extra written warning. Lose 40% of your wallet.",
     text = function() return "Gain one extra written warning. Lose 40% of your wallet." end },
   { id = "venture", name = "Venture Capital", sprite = "virtual-signal/signal-star",
+    blurb = "Cash now (a full next quota). You lose every written warning you have left.",
     text = function(c) return "Get " .. U.money(c) .. " right now. You lose every written warning you have left." end,
     cash = 1.0 },
 }

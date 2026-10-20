@@ -46,6 +46,11 @@ local function terminal_picture()
   end
   local picture = { layers = layers }
   rescale(picture, TERMINAL_SCALE)
+  -- The pad art carries a one-tile upward shift; drop it so the art sits on the 6x6 box.
+  for _, layer in pairs(layers) do
+    local s = layer.shift or { 0, 0 }
+    layer.shift = { s[1], s[2] + TERMINAL_SCALE }
+  end
   return picture
 end
 
@@ -143,7 +148,19 @@ meteor.action = {
     },
   },
 }
-data:extend({ meteor })
+
+-- Early showers: a smaller rock that dents belts and inserters (150 HP) instead of deleting them.
+local light = util.table.deepcopy(meteor)
+light.name = "quota-meteor-light"
+light.picture.scale = light.picture.scale * 0.7
+local hit = light.action.action_delivery.target_effects[1].action
+hit.radius = 2.5
+hit.action_delivery.target_effects = {
+  { type = "damage", damage = { amount = 70, type = "explosion" } },
+  { type = "damage", damage = { amount = 30, type = "physical" } },
+}
+light.action.action_delivery.target_effects[3] = { type = "create-entity", entity_name = "medium-explosion" }
+data:extend({ meteor, light })
 
 -- ----------------------------------------------------------- auditor ---
 

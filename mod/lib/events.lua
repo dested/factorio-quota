@@ -9,27 +9,38 @@ local P = require("lib.perks")
 local S = require("lib.sfx")
 local D = require("lib.delivery")
 local H = require("lib.hazards")
+local R = require("lib.rules")
 
 local E = {}
 
+-- Care packages carry machines only: never products you could sell, so a free package
+-- can't be flipped at the terminal.
 local SUPPLY_POOL = {
-  "electronic-circuit", "iron-gear-wheel", "steel-plate", "assembling-machine-2", "fast-inserter",
-  "fast-transport-belt", "electric-mining-drill", "solar-panel", "medium-electric-pole", "steel-furnace",
-  "big-electric-pole", "piercing-rounds-magazine", "advanced-circuit", "plastic-bar", "engine-unit",
-  "speed-module", "productivity-module", "bulk-inserter", "assembling-machine-1", "inserter",
-  "transport-belt", "stone-furnace", "gun-turret", "pipe", "boiler", "steam-engine",
+  "assembling-machine-2", "fast-inserter", "fast-transport-belt", "electric-mining-drill", "solar-panel",
+  "medium-electric-pole", "steel-furnace", "big-electric-pole", "bulk-inserter", "assembling-machine-1", "inserter", "transport-belt", "stone-furnace",
+  "gun-turret", "pipe", "boiler", "steam-engine", "underground-belt", "splitter",
 }
 
 E.DEFS = {
-  { id = "flash", good = true, weight = 3 },
-  { id = "bounty", good = true, weight = 3 },
-  { id = "supply", good = true, weight = 2 },
-  { id = "rally", good = true, weight = 2 },
-  { id = "meteor", good = false, weight = 2 },
-  { id = "gremlin", good = false, weight = 2 },
-  { id = "crash", good = false, weight = 1.5 },
-  { id = "raid", good = false, weight = 1.5, from = 4 },
+  { id = "flash", good = true, weight = 3, name = "Flash Sale", sprite = "virtual-signal/signal-fire",
+    desc = "Your best seller this shift sells for x4 for 60 seconds." },
+  { id = "bounty", good = true, weight = 3, name = "Bounty", sprite = "virtual-signal/signal-star",
+    desc = "Ship a set number of one item within 90 seconds for a bonus worth 15% of the quota." },
+  { id = "supply", good = true, weight = 2, name = "Care Package", sprite = "item/wooden-chest",
+    desc = "A free drop pod of machines lands next to you." },
+  { id = "rally", good = true, weight = 2, name = "Market Rally", sprite = "virtual-signal/up-arrow",
+    desc = "Everything sells for x1.5 for 45 seconds." },
+  { id = "meteor", good = false, weight = 2, name = "Stray Meteor", sprite = "virtual-signal/signal-explosion",
+    desc = "One meteor. Watch for the red circle. Leaves a crater full of ore." },
+  { id = "gremlin", good = false, weight = 2, name = "Stray Gremlin", sprite = "entity/small-biter",
+    desc = "A gremlin jams one machine. Walk up to it to whack it." },
+  { id = "crash", good = false, weight = 1.5, name = "Market Crash", sprite = "virtual-signal/down-arrow",
+    desc = "Everything sells for x0.6 for 30 seconds. Maybe hold your stock." },
+  { id = "raid", good = false, weight = 1.5, from = 4, name = "Surprise Raid", sprite = "item/gun-turret",
+    desc = "From shift 4: a rival firm lands a pack of biters on your shore." },
 }
+E.BY_ID = {}
+for _, d in ipairs(E.DEFS) do E.BY_ID[d.id] = d end
 
 function E.reset()
   storage.q.ev = { next = nil, active = nil }
@@ -106,8 +117,8 @@ local function fire(id)
       items[#items + 1] = { n, math.max(1, math.min(stack * 4, math.floor(budget / v))) }
     end
     if #items == 0 then return false end
-    D.drop(items, { label = "Care Package", gifted = true })
-    U.company("A care package is on its way down. Company property, so don't try to sell it.")
+    D.drop(items, { label = "Care Package" })
+    U.company("A care package is on its way down. Compliments of The Company.")
     S.jingle("event_good")
   elseif id == "meteor" then
     H.meteor(nil)
@@ -157,7 +168,7 @@ function E.tick()
   local lucky = P.has("lucky")
   local pool = {}
   for _, d in ipairs(E.DEFS) do
-    local ok = (q.shift or 1) >= (d.from or 0)
+    local ok = (q.shift or 1) >= (d.from or 0) and R.event_on(d.id)
     -- Only one timed event at a time.
     if ev.active and (d.id == "flash" or d.id == "rally" or d.id == "crash" or d.id == "bounty") then ok = false end
     if ok then pool[#pool + 1] = d end
@@ -166,22 +177,22 @@ function E.tick()
   if d then fire(d.id) end
 end
 
--- Remaining ticks and a label for the HUD.
+-- Remaining ticks and a short label for the HUD status line (its icon shows the item).
 function E.describe()
   local q = storage.q
   local a = q.ev and q.ev.active
   if not a then return nil end
   local left = math.max(0, a.ends - game.tick)
   if a.id == "flash" then
-    return { "", "[color=100,255,110]FLASH SALE[/color] [item=", a.item, "] x4" }, left, a.len
+    return "[color=100,255,110]FLASH SALE[/color] x4", left, a.len
   elseif a.id == "rally" then
-    return "[color=100,255,110]MARKET RALLY[/color] everything x1.5", left, a.len
+    return "[color=100,255,110]MARKET RALLY[/color] all x1.5", left, a.len
   elseif a.id == "crash" then
-    return "[color=255,90,80]MARKET CRASH[/color] everything x0.6", left, a.len
+    return "[color=255,90,80]MARKET CRASH[/color] all x0.6", left, a.len
   elseif a.id == "bounty" then
     local got = math.max(0, (q.shift_sales[a.item] or 0) - a.start)
-    return { "", "[color=255,200,70]BOUNTY[/color] [item=", a.item, "] ", math.min(got, a.need), "/", a.need,
-      " for ", U.money(a.reward) }, left, a.len
+    return { "", "[color=255,200,70]BOUNTY[/color] ", math.min(got, a.need), "/", a.need, " for ", U.money(a.reward) },
+      left, a.len
   end
   return nil
 end

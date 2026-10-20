@@ -135,7 +135,65 @@ styles.quota_plot_selected = {
 styles.quota_hud_frame = {
   type = "frame_style",
   parent = "frame",
-  width = 600,
+  width = 330,
+  padding = 6,
+}
+
+styles.quota_hud_timer = { type = "label_style", parent = "label", font = "quota-timer", font_color = { 1, 1, 1 } }
+
+styles.quota_hud_bar = {
+  type = "progressbar_style",
+  parent = "progressbar",
+  bar_width = 20,
+  height = 20,
+  horizontally_stretchable = "on",
+  color = { 1, 0.75, 0.1 },
+  font = "default-bold",
+  font_color = { 1, 1, 1 },
+  embed_text_in_bar = true,
+}
+
+styles.quota_thin_bar = {
+  type = "progressbar_style",
+  parent = "progressbar",
+  bar_width = 4,
+  height = 4,
+  horizontally_stretchable = "on",
+  color = { 0.55, 0.75, 1 },
+}
+
+styles.quota_hud_button = {
+  type = "button_style",
+  parent = "button",
+  height = 28,
+  minimal_width = 0,
+  left_padding = 8,
+  right_padding = 8,
+  font = "default-bold",
+}
+
+styles.quota_hud_confirm = {
+  type = "button_style",
+  parent = "confirm_button",
+  height = 28,
+  minimal_width = 0,
+  left_padding = 8,
+  right_padding = 8,
+  font = "default-bold",
+}
+
+styles.quota_mode_card = {
+  type = "frame_style",
+  parent = "bonus_card_frame",
+  width = 200,
+  minimal_height = 118,
   padding = 8,
-  top_padding = 6,
+  vertical_flow_style = { type = "vertical_flow_style", vertical_spacing = 2 },
+}
+
+styles.quota_section_frame = {
+  type = "frame_style",
+  parent = "inside_shallow_frame_with_padding",
+  horizontally_stretchable = "on",
+  vertical_flow_style = { type = "vertical_flow_style", vertical_spacing = 4 },
 }

@@ -1,12 +1,7 @@
 -- Supply pods: a cargo pod falls out of the sky, slams into the ground and
 -- turns into a container holding the delivery. It vanishes once emptied.
---
--- Products delivered by The Company are tracked as "company property": the
--- first that many units of each sell for scrap, so a kit full of ammo and coal
--- can't be flipped at the terminal.
 
 local U = require("lib.util")
-local V = require("lib.values")
 local W = require("lib.world")
 local A = require("lib.anim")
 
@@ -14,13 +9,6 @@ local D = {}
 
 local FALL_TICKS = 70
 local FALL_HEIGHT = 36
-
-function D.mark_gifted(name, count)
-  local q = storage.q
-  if V.is_product(name) then
-    q.gifted[name] = (q.gifted[name] or 0) + count
-  end
-end
 
 -- Keep pods off terminal pads so their labels never cover the terminal.
 local function clear_of_terminals(surface, spot)
@@ -39,7 +27,7 @@ local function landing_spot(surface, pos)
   return surface.find_non_colliding_position("quota-supply-pod", { x = 0, y = 12 }, 30, 1)
 end
 
--- items: list of { name, count }. opts: near (position), label, gifted (bool), sound (bool)
+-- items: list of { name, count }. opts: near (position), label
 function D.drop(items, opts)
   opts = opts or {}
   local surface = U.surface()
@@ -59,13 +47,16 @@ function D.drop(items, opts)
   for _, it in ipairs(items) do
     if prototypes.item[it[1]] and it[2] > 0 then
       list[#list + 1] = { name = it[1], count = math.floor(it[2]) }
-      if opts.gifted ~= false then D.mark_gifted(it[1], math.floor(it[2])) end
     end
   end
 
   local marker = rendering.draw_circle({
     surface = surface, target = spot, radius = 1.6, color = { 0.4, 0.9, 1, 0.5 },
     width = 3, filled = false, draw_on_ground = true, time_to_live = FALL_TICKS + 10,
+  })
+  rendering.draw_text({
+    text = "INCOMING: " .. (opts.label or "Supply Pod"), surface = surface, target = { spot.x, spot.y - 2.5 },
+    color = { 0.55, 0.9, 1 }, scale = 1.4, alignment = "center", font = "default-bold", time_to_live = FALL_TICKS + 10,
   })
   local shadow = rendering.draw_sprite({
     sprite = "quota-pod-shadow", surface = surface, target = spot, x_scale = 0.2, y_scale = 0.2,
@@ -83,11 +74,13 @@ end
 local function fill_pods(surface, spot, items, label)
   local i = 1
   local pods = 0
+  local first
   while i <= #items and pods < 6 do
     local pos = surface.find_non_colliding_position("quota-supply-pod", spot, 12, 1) or spot
     local ent = surface.create_entity({ name = "quota-supply-pod", position = pos, force = "player" })
     if not ent then break end
     pods = pods + 1
+    first = first or ent
     local inv = ent.get_inventory(defines.inventory.chest)
     while i <= #items do
       local it = items[i]
@@ -109,6 +102,7 @@ local function fill_pods(surface, spot, items, label)
   for j = i, #items do
     surface.spill_item_stack({ position = spot, stack = { name = items[j].name, count = items[j].count }, enable_looted = true })
   end
+  return first
 end
 
 A.register("pod", function(job)
@@ -134,8 +128,14 @@ A.register("pod", function(job)
   end
   U.sound("quota-kick", 1)
   U.sound("quota-crash", 0.5)
-  fill_pods(surface, spot, job.items, job.label)
+  local pod = fill_pods(surface, spot, job.items, job.label)
   U.fly(job.label .. " delivered", { x = spot.x, y = spot.y - 2 }, U.COLORS.blue, surface, 150)
+  -- Say where it landed: an alert on the pod (clears once it's emptied).
+  local icon = job.items[1] and { type = "item", name = job.items[1].name } or { type = "virtual", name = "signal-info" }
+  for _, p in pairs(U.players()) do
+    if pod and pod.valid then p.add_custom_alert(pod, icon, { "", job.label, " landed. Empty the pod." }, true) end
+  end
+  U.company({ "", job.label, " landed. Empty the pod to collect it." })
   return true
 end)
 

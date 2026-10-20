@@ -10,7 +10,6 @@ C.SECOND = 60
 C.MINUTE = 3600
 C.BREAK_SECONDS = 90
 C.BRIEFING_SECONDS = 30      -- look-around time before shift 1 (clock in early to skip it)
-C.FINAL_SHIFT = 8
 
 -- Shift length (seconds) and base quota per shift, Associate difficulty.
 C.SHIFTS = {
@@ -25,6 +24,8 @@ C.SHIFTS = {
 }
 C.ENDLESS_LEN = 480
 C.ENDLESS_GROWTH = 1.45
+C.LONG_GROWTH = 1.4           -- runs longer than the table: quota x this per extra shift
+C.COMPLEX_QUOTA_STEP = 0.05   -- Complex: quotas +5% per shift from shift 4 (deep goods pay more)
 
 C.DIFFICULTIES = {
   intern = {
@@ -49,6 +50,9 @@ C.PERFORMANCE_TAKE = 0.15
 -- --------------------------------------------------------------- money ---
 C.OVERTIME_RATE = 0.20        -- share of excess paid as overtime bonus
 C.EARLY_BIRD_RATE = 0.001     -- x next quota, per break second skipped
+C.CLOCK_OUT_RATE = 0.001      -- quota met: clock out early for this x quota per shift second left
+C.CLOCK_OUT_CAP = 0.25        -- ...capped at 25% of the quota
+C.CLOCK_OUT_MIN_SECS = 10
 C.SCRAP_RATE = 0.10           -- machinery sells for 10% of its value
 
 -- Item valuation: crafted = (inputs + seconds * TIME_VALUE) * MARKUP.
@@ -60,6 +64,27 @@ C.RAW_VALUES = {
   ["crude-oil"] = 0.15, ["water"] = 0, ["steam"] = 0,
 }
 C.VALUE_OVERRIDES = { ["uranium-235"] = 300 }
+-- Value multipliers after the recipe pass. Shotgun shells are one hand-craft from plates and
+-- were the best money in the early game; now they roughly break even on their plates.
+C.VALUE_SCALE = { ["shotgun-shell"] = 0.8 }
+-- Never rolled hot (still sellable).
+C.NOT_HOT = { ["shotgun-shell"] = true }
+
+-- Complex mode, "Complexity Pays": products sell for value x (BASE + STEP x depth), where depth
+-- counts crafting steps from raw (plates 1, gears 2, circuits 3, green science 5...).
+C.COMPLEX_BASE = 0.6
+C.COMPLEX_STEP = 0.2
+C.COMPLEX_CAP = 2.6
+
+-- Complex mode, zoning: bought plots (HQ excluded) needed per tech tier.
+-- Tier 1 red/green, 2 oil branch and military science, 3 chemical, 4 production and utility.
+C.ZONING = { 0, 2, 4, 6 }
+C.PACK_TIERS = {
+  ["automation-science-pack"] = 1, ["logistic-science-pack"] = 1, ["military-science-pack"] = 2,
+  ["chemical-science-pack"] = 3, ["production-science-pack"] = 4, ["utility-science-pack"] = 4,
+}
+C.OTHER_PACK_TIER = 5         -- space and planet packs: never licensed
+
 
 -- Flooding: price x 1 / (1 + sold_value / (FLOOD_SCALE * quota)).
 C.FLOOD_SCALE = 1.25
@@ -90,7 +115,6 @@ C.REROLL_MIN = 50
 C.REROLL_GROWTH = 1.6
 C.SUPPLY_MARKUP_MACHINE = 0.8 -- crates of placeable things (bulk discount; they only scrap for 10%)
 C.SUPPLY_MARKUP_PRODUCT = 1.25 -- crates holding sellable products (company property, so they can't be flipped)
-C.CORPORATE_OFFER_AFTER = { [3] = true, [6] = true }
 
 -- --------------------------------------------------------------- world ---
 C.PLOT = 64
@@ -113,8 +137,10 @@ C.QUAKES_PER_SHIFT = 3
 C.QUAKE_WARNING = 5 * 60
 C.QUAKE_RADIUS = 26
 
-C.METEOR_MIN_GAP = 14 * 60
+C.METEOR_MIN_GAP = 14 * 60   -- shift 8+; earlier showers are thinner (see METEOR_EASE)
 C.METEOR_MAX_GAP = 26 * 60
+C.METEOR_EASE = 5 * 60        -- extra gap per shift before shift 8
+C.METEOR_HEAVY_FROM = 6       -- lighter meteors before this shift
 C.METEOR_FLIGHT = 3 * 60
 
 C.RAID_EVERY = 120 * 60
@@ -138,16 +164,17 @@ C.STARTER_KIT = {
   { "burner-inserter", 10 },
   { "small-electric-pole", 60 },
   { "offshore-pump", 1 },
-  { "boiler", 4 },
-  { "steam-engine", 8 },
+  { "boiler", 2 },
+  { "steam-engine", 2 },
   { "pipe", 50 },
   { "pipe-to-ground", 10 },
   { "wooden-chest", 20 },
   { "iron-chest", 10 },
-  { "coal", 200 },
+  { "coal", 100 },
   { "gun-turret", 6 },
   { "firearm-magazine", 200 },
   { "small-lamp", 10 },
+  { "repair-pack", 20 },
 }
 C.CHARACTER_KIT = {
   { "submachine-gun", 1 },

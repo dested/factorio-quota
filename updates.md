@@ -2,6 +2,11 @@
 
 Newest first. One entry per finished task.
 
+## 2026-10-19 — v2 from Sal's playtest
+Run Setup replaces the difficulty pick: Simple (8 shifts) or Complex (10, Complexity Pays, zoning by plots owned), difficulty, threat presets + 20 switches, fine print; all backed by map settings. Removing the property counter fixes the $1 ammo (Company-issue copies tried, then dropped at Sal's call); no meteor shower/gremlins before shift 4, lighter early meteors, ghosts on death; kit 2 boilers / 2 engines / 100 coal / 20 repair packs; shotgun shells x0.8 and never hot. Compact bottom-right HUD, MARKET side panel, Handbook, recipe tooltips on item icons, drop-pod alerts, terminal holds while open, Tech tab explains it is Factorio's tree bought outright. Autotest 119/0; GUIs not yet screenshot-checked.
+Electric Furnaces tech ($3,500 after Chemical Science). Run Setup fits small screens (scrolls), dropdown lock-up fixed. Clock out early once quota is met (HUD button, two clicks, 1% of quota per 10 s left, cap 25%, never on The Audit).
+Touched: mod/settings.lua, mod/control.lua, mod/data.lua, mod/lib/{rules,zoning,config,values,market,conditions,events,hazards,delivery,terminals,shop,shift,world,perks}.lua, mod/lib/gui/{common,hud,market_panel,handbook,catalog,screens,main}.lua, mod/prototypes/{issued,entities,styles,fonts}.lua, mod/locale/en/quota.cfg, tools/autotest/control.lua
+
 ## 2026-10-17 — play it on a Mac
 play.sh: finds factorio.app (Steam, /Applications, Spotlight), builds the same isolated profile, checks 2.1+, starts Steam, creates and opens a fresh run. Dry-run tested with a stubbed app; not yet run on a real Mac.
 Touched: play.sh, cliffnotes.md

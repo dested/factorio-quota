@@ -67,6 +67,7 @@ function T.refresh_labels()
   local q = storage.q
   local text, color = status()
   for unit, t in pairs(q.terminals) do
+    t.held = nil
     if t.label and t.label.valid then
       if q.frozen[unit] then
         t.label.text = "UNDER AUDIT"
@@ -96,35 +97,17 @@ end
 
 -- Sell one terminal's contents. Returns credits earned.
 local function sell_terminal(t)
-  local q = storage.q
   local inv = t.entity.get_inventory(defines.inventory.chest)
   if not inv or inv.is_empty() then return 0 end
   local total, jackpot = 0, 0
-  local property = 0
   for _, stack in pairs(inv.get_contents()) do
     local name, count = stack.name, stack.count
     if V.base(name) > 0 then
-      local gifted = math.min(count, q.gifted[name] or 0)
-      if gifted > 0 then
-        q.gifted[name] = (q.gifted[name] or 0) - gifted
-        if q.gifted[name] <= 0 then q.gifted[name] = nil end
-        local scrap = V.full(name) * C.SCRAP_RATE * gifted
-        total = total + scrap
-        property = property + scrap
-      end
-      local rest = count - gifted
-      if rest > 0 then
-        local credits, jp = M.sell(name, rest)
-        total = total + credits
-        jackpot = jackpot + jp
-      end
+      local credits, jp = M.sell(name, count)
+      total = total + credits
+      jackpot = jackpot + jp
       inv.remove({ name = name, count = count, quality = stack.quality })
     end
-  end
-  if property > 0 and game.tick - (q.property_warned or -99999) > 60 * 60 then
-    q.property_warned = game.tick
-    U.fly("Company property: sold for scrap", { x = t.entity.position.x, y = t.entity.position.y - 5 },
-      U.COLORS.grey, t.entity.surface, 150)
   end
   if jackpot > 0 then
     S.jingle("jackpot")
@@ -134,14 +117,46 @@ local function sell_terminal(t)
   return total
 end
 
+-- Terminals someone has open right now. They hold their contents until closed,
+-- so an accidental inventory dump can be dragged back out.
+local function held_units()
+  local held = {}
+  for _, p in pairs(game.connected_players) do
+    local o = p.opened
+    if o and p.opened_gui_type == defines.gui_type.entity and o.valid and o.name == "quota-terminal" and o.unit_number then
+      held[o.unit_number] = true
+    end
+  end
+  return held
+end
+
+local function show_hold(t, on)
+  if t.held == on then return end
+  t.held = on
+  if t.label and t.label.valid then
+    if on then
+      t.label.text = "ON HOLD: CLOSE TO SHIP"
+      t.label.color = { 1, 0.8, 0.3 }
+    else
+      local text, color = status()
+      t.label.text = text
+      t.label.color = color
+    end
+  end
+end
+
 function T.sweep()
   local q = storage.q
   if not selling() then return end
+  local held = held_units()
   for unit, t in pairs(q.terminals) do
     local e = t.entity
     if not (e and e.valid) then
       T.unregister(unit)
+    elseif held[unit] and not q.frozen[unit] then
+      show_hold(t, true)
     elseif not q.frozen[unit] then
+      show_hold(t, false)
       local earned = sell_terminal(t)
       if earned > 0 then
         L.ship(earned)
@@ -162,15 +177,6 @@ function T.sweep()
         t.last_launch = game.tick
       end
     end
-  end
-end
-
--- Company property decays: after a shift or two it's just stuff you own.
-function T.decay_gifted()
-  local q = storage.q
-  for name, n in pairs(q.gifted) do
-    local nv = math.floor(n * 0.5)
-    if nv <= 0 then q.gifted[name] = nil else q.gifted[name] = nv end
   end
 end
 

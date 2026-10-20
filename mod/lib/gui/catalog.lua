@@ -9,6 +9,8 @@ local P = require("lib.perks")
 local W = require("lib.world")
 local K = require("lib.conditions")
 local SH = require("lib.shop")
+local Z = require("lib.zoning")
+local R = require("lib.rules")
 local G = require("lib.gui.common")
 
 local CAT = {}
@@ -16,7 +18,7 @@ local CAT = {}
 local NAME = "quota_catalog"
 local RIGHT_W = 860
 local RIGHT_H = 600
-local TABS = { "Contracts", "R&D", "Supplies", "Land", "Market" }
+local TABS = { "Contracts", "Tech", "Supplies", "Land", "Market" }
 
 function CAT.is_open(player)
   local el = player.gui.screen[NAME]
@@ -81,7 +83,7 @@ local function next_section(parent)
   if not nx then return end
   local box = parent.add({ type = "frame", style = "inside_shallow_frame_with_padding", direction = "vertical" })
   box.style.horizontally_stretchable = true
-  local caption = q.endless and ("NEXT: SHIFT " .. nx.n) or ("NEXT: SHIFT " .. nx.n .. " OF " .. C.FINAL_SHIFT)
+  local caption = q.endless and ("NEXT: SHIFT " .. nx.n) or ("NEXT: SHIFT " .. nx.n .. " OF " .. R.final())
   G.label(box, caption, "quota_mid_label", { color = { 0.75, 0.85, 1 } })
   local f = box.add({ type = "flow", direction = "horizontal" })
   f.style.vertical_align = "center"
@@ -109,7 +111,7 @@ local function next_section(parent)
   if #nx.hot_order == 0 then G.label(hf, "None yet. Unlock more recipes.", "label") end
   for _, name in ipairs(nx.hot_order) do
     local m = M.boosted(nx.hot[name])
-    G.icon(hf, "item/" .. name, 36, { "", "[item=", name, "] ", U.mult(m) })
+    G.item_icon(hf, name, 36)
     G.label(hf, U.mult(m), "bold_label", { color = { 1, 0.6, 0.15 } })
   end
 end
@@ -223,7 +225,7 @@ end
 
 -- --------------------------------------------------------------- R&D ---
 
-local function rnd_row(parent, sprite, name, sub, desc, price, action, tags, state)
+local function rnd_row(parent, sprite, name, sub, desc, price, action, tags, state, unlocks)
   local row = parent.add({ type = "frame", style = "quota_row_frame", direction = "horizontal" })
   row.style.width = (RIGHT_W - 60) / 2
   row.style.vertical_align = "center"
@@ -234,6 +236,16 @@ local function rnd_row(parent, sprite, name, sub, desc, price, action, tags, sta
   G.label(nf, name, "bold_label")
   if sub then G.label(nf, sub, "label", { color = { 0.7, 0.85, 1 } }) end
   G.label(col, desc, "label", { wrap = true, width = 210 })
+  if unlocks and #unlocks > 0 then
+    local uf = col.add({ type = "flow", direction = "horizontal" })
+    uf.style.horizontal_spacing = 0
+    for i, rname in ipairs(unlocks) do
+      if i > 7 then break end
+      local b = uf.add({ type = "sprite-button", sprite = G.sprite("recipe/" .. rname), style = "transparent_slot" })
+      b.style.size = 24
+      b.elem_tooltip = { type = "recipe", name = rname }
+    end
+  end
   G.pusher(row)
   local bf = row.add({ type = "flow", direction = "vertical" })
   bf.style.horizontal_align = "right"
@@ -251,9 +263,18 @@ end
 
 local function tab_rnd(pane)
   local scroll = pane.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto-and-reserve-space" })
-  scroll.style.height = RIGHT_H - 50
+  scroll.style.height = RIGHT_H - 72
   scroll.style.width = RIGHT_W - 20
-  heading(scroll, "Upgrades")
+  local intro = scroll.add({ type = "frame", style = "quota_section_frame", direction = "vertical" })
+  G.label(intro, "How tech works here", "bold_label", { color = { 1, 0.85, 0.35 } })
+  G.label(intro, "Technology below is Factorio's own tech tree (press T to see it). Buying a license researches that technology on the spot, prerequisites included: no labs, no science packs. Your labs still work the normal way too, so you can always research with science instead of cash. Hover the small icons for the recipes a tech unlocks.",
+    "label", { wrap = true, width = RIGHT_W - 70 })
+  G.label(intro, "Company upgrades are QUOTA's own: they stack on top of Factorio's bonuses.", "label",
+    { wrap = true, width = RIGHT_W - 70, color = { 0.7, 0.7, 0.7 } })
+  if R.complex() then
+    G.label(intro, "Zoning: " .. Z.summary(), "label", { wrap = true, width = RIGHT_W - 70, color = { 1, 0.7, 0.4 } })
+  end
+  heading(scroll, "Company upgrades")
   local ut = scroll.add({ type = "table", column_count = 2 })
   ut.style.horizontal_spacing = 6
   ut.style.vertical_spacing = 6
@@ -264,8 +285,7 @@ local function tab_rnd(pane)
     if lvl >= u.max then state = "MAXED" elseif lock then state = lock end
     rnd_row(ut, u.sprite, u.name, "  Lv " .. lvl .. "/" .. u.max, u.desc, SH.upgrade_price(u), "buy_upgrade", { id = u.id }, state)
   end
-  heading(scroll, "Technology")
-  G.label(scroll, "Bought technology is researched instantly, prerequisites included.", "label", { color = { 0.7, 0.7, 0.7 } })
+  heading(scroll, "Tech licenses (Factorio research)")
   local tt = scroll.add({ type = "table", column_count = 2 })
   tt.style.horizontal_spacing = 6
   tt.style.vertical_spacing = 6
@@ -281,8 +301,9 @@ local function tab_rnd(pane)
   end)
   for _, e in ipairs(entries) do
     local state = "buy"
-    if e.rank == 3 then state = "owned" elseif e.lock then state = "Needs " .. e.lock.name end
-    rnd_row(tt, "technology/" .. e.r.tech, e.r.name, nil, e.r.desc, SH.rnd_price(e.r), "buy_rnd", { id = e.r.id }, state)
+    if e.rank == 3 then state = "owned" elseif e.lock then state = e.lock end
+    rnd_row(tt, "technology/" .. e.r.tech, e.r.name, nil, e.r.desc, SH.rnd_price(e.r), "buy_rnd", { id = e.r.id }, state,
+      SH.rnd_unlocks(e.r))
   end
 end
 
@@ -301,7 +322,7 @@ local function crate_card(parent, sprite, name, desc, items, price, action, tags
   if items then
     local f = card.add({ type = "flow", direction = "horizontal" })
     f.style.horizontal_spacing = 0
-    for _, it in ipairs(items) do G.icon(f, "item/" .. it[1], 36, { "", it[2], " x [item=", it[1], "]" }, it[2]) end
+    for _, it in ipairs(items) do G.item_icon(f, it[1], 36, it[2]) end
   end
   G.pusher(card, true)
   local bf = card.add({ type = "flow", direction = "horizontal" })
@@ -319,10 +340,10 @@ end
 
 local function tab_supplies(pane)
   local scroll = pane.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto-and-reserve-space" })
-  scroll.style.height = RIGHT_H - 50
+  scroll.style.height = RIGHT_H - 72
   scroll.style.width = RIGHT_W - 20
-  G.label(scroll, "Crates arrive by drop pod next to you. Company property: the products inside sell for scrap.", "label",
-    { color = { 0.7, 0.7, 0.7 } })
+  G.label(scroll, "Everything here falls from orbit in a drop pod that lands next to you: empty the pod to collect it.", "label",
+    { wrap = true, width = RIGHT_W - 60, color = { 0.7, 0.7, 0.7 } })
   local t = scroll.add({ type = "table", column_count = 3 })
   t.style.horizontal_spacing = 6
   t.style.vertical_spacing = 6
@@ -354,26 +375,30 @@ local function tab_land(pane, player)
   local grid = gridbox.add({ type = "table", column_count = 2 * C.GRID_RADIUS + 1 })
   grid.style.horizontal_spacing = 0
   grid.style.vertical_spacing = 0
-  local R = C.GRID_RADIUS
-  for py = -R, R do
-    for px = -R, R do
+  local GR = C.GRID_RADIUS
+  for py = -GR, GR do
+    for px = -GR, GR do
       local plot = W.plot(px, py)
       local t = W.TYPES[plot.type]
       local key = W.key(px, py)
-      local style = "quota_plot_button"
-      if plot.owned then style = "quota_plot_owned"
-      elseif W.purchasable(px, py) then style = "quota_plot_buy" end
-      if s.plot == key then style = "quota_plot_selected" end
-      local tip = plot.owned and { "", t.name, " (owned)" }
-        or { "", t.name, "  ", U.money(SH.plot_price(plot)), W.purchasable(px, py) and "" or "\nNot next to your land yet." }
-      grid.add({
-        type = "sprite-button", sprite = G.sprite(t.sprite), style = style, tooltip = tip,
-        tags = { qa = "select_plot", px = px, py = py },
-      })
+      local forsale = not plot.owned and W.purchasable(px, py)
+      if plot.owned or forsale then
+        local style = plot.owned and "quota_plot_owned" or "quota_plot_buy"
+        if s.plot == key then style = "quota_plot_selected" end
+        local tip = plot.owned and { "", t.name, " (yours)" } or { "", t.name, "  ", U.money(SH.plot_price(plot)), "\nClick for details." }
+        grid.add({
+          type = "sprite-button", sprite = G.sprite(t.sprite), style = style, tooltip = tip,
+          tags = { qa = "select_plot", px = px, py = py },
+        })
+      else
+        -- Unexplored: no icon until it borders your land.
+        local b = grid.add({ type = "sprite-button", style = "quota_plot_button", tooltip = "Unexplored. Buy land next to it to see what's here." })
+        b.enabled = false
+      end
     end
   end
   local legend = gridbox.add({ type = "label", style = "label",
-    caption = "[color=110,220,110]Green[/color]: for sale    [color=255,210,80]Yellow[/color]: yours    [color=255,110,90]Red[/color]: selected" })
+    caption = "[color=255,210,80]Gold[/color]: your land    [color=110,220,110]Green[/color]: for sale next door (click one)" })
   legend.style.font_color = { 0.75, 0.75, 0.75 }
   legend.style.left_padding = 6
   legend.style.top_padding = 4
@@ -384,10 +409,13 @@ local function tab_land(pane, player)
   local sel = s.plot and q.plots[s.plot]
   if not sel then
     G.label(info, "The island", "quota_mid_label")
-    G.label(info, "Green plots border your land and are for sale. Click one to see what's on it. Bought land rises out of the sea with its ore, trees and surprises.",
+    G.label(info, "Your island is the gold square. The green squares next to it are for sale: click one to see what's on it and buy it. Bought land rises out of the sea, and the plots around it come up for sale next.",
       "label", { wrap = true, width = RIGHT_W - 9 * 52 - 80 })
     G.label(info, { "", "You own ", W.owned_count(), " plots. Each plot you buy makes the next one 18% pricier." }, "label",
       { wrap = true, width = RIGHT_W - 9 * 52 - 80, color = { 0.75, 0.75, 0.75 } })
+    if R.complex() then
+      G.label(info, "Zoning: " .. Z.summary(), "label", { wrap = true, width = RIGHT_W - 9 * 52 - 80, color = { 1, 0.7, 0.4 } })
+    end
     return
   end
   local t = W.TYPES[sel.type]
@@ -424,35 +452,35 @@ end
 -- ------------------------------------------------------------- market ---
 
 local function tab_market(pane)
-  local q = storage.q
   local root = pane.add({ type = "flow", direction = "vertical" })
-  G.label(root, "Prices right now. Each item floods as you sell it this shift and recovers 75% between shifts. Machinery sells for scrap.",
+  G.label(root, "What the terminal pays per unit. Usual x Hot, minus any flood (selling lots of one item drops its price; it recovers 75% between shifts). Machinery sells for scrap. Hover an icon for its recipe.",
     "label", { wrap = true, width = RIGHT_W - 40, color = { 0.75, 0.75, 0.75 } })
-  local gifted = {}
-  for name, n in pairs(q.gifted) do gifted[#gifted + 1] = "[item=" .. name .. "]" .. U.num(n) end
-  table.sort(gifted)
-  if #gifted > 0 then
-    G.label(root, "Company property (sells for scrap): " .. table.concat(gifted, "  "), "label",
-      { wrap = true, width = RIGHT_W - 40 })
-  end
   local scroll = root.add({ type = "scroll-pane", horizontal_scroll_policy = "never", vertical_scroll_policy = "auto-and-reserve-space" })
-  scroll.style.height = RIGHT_H - 110
+  scroll.style.height = RIGHT_H - 130
   scroll.style.width = RIGHT_W - 20
-  local t = scroll.add({ type = "table", column_count = 6, style = "bordered_table" })
-  t.style.horizontal_spacing = 16
-  for _, h in ipairs({ "", "Item", "Value", "Hot", "Flood", "Price now" }) do
-    G.label(t, h, "bold_label")
+  local t = scroll.add({ type = "table", column_count = 6 })
+  t.style.horizontal_spacing = 14
+  t.style.vertical_spacing = 0
+  -- Same width and alignment for header and cells so the columns line up.
+  local cols = { { "", 28 }, { "Item", 300 }, { "Usual", 80, "right" }, { "Hot", 50, "center" },
+    { "Flooded", 70, "right" }, { "Pays now", 100, "right" } }
+  local function cell(i, caption, style, color)
+    local l = G.label(t, caption, style, { color = color })
+    l.style.width = cols[i][2]
+    l.style.horizontal_align = cols[i][3] or "left"
+    return l
   end
+  for i, c in ipairs(cols) do cell(i, c[1], "bold_label", { 0.7, 0.7, 0.7 }) end
   local rows = M.price_list()
   for i, r in ipairs(rows) do
     if i > 120 then break end
-    G.icon(t, "item/" .. r.name, 28, nil, nil, "transparent_slot")
-    G.label(t, prototypes.item[r.name] and prototypes.item[r.name].localised_name or r.name, "label", { width = 400 })
-    G.label(t, U.price_str(r.base), "label")
-    G.label(t, r.hot and U.mult(r.hot) or "", "bold_label", { color = { 1, 0.6, 0.15 } })
-    local fl = G.label(t, U.pct(r.flood), "label")
-    if r.flood < 0.8 then fl.style.font_color = { 1, 0.5, 0.4 } end
-    G.label(t, U.price_str(r.price), "bold_label", { color = { 1, 0.85, 0.35 } })
+    local usual = r.price / (r.hot or 1) / math.max(0.01, r.flood)
+    G.item_icon(t, r.name, 28, nil, "transparent_slot")
+    cell(2, prototypes.item[r.name] and prototypes.item[r.name].localised_name or r.name, "label")
+    cell(3, U.price_str(usual), "label", { 0.7, 0.7, 0.7 })
+    cell(4, r.hot and U.mult(r.hot) or "", "bold_label", { 1, 0.6, 0.15 })
+    cell(5, r.flood < 0.995 and ("-" .. math.floor((1 - r.flood) * 100 + 0.5) .. "%") or "", "label", { 1, 0.45, 0.35 })
+    cell(6, U.price_str(r.price), "bold_label", { 1, 0.85, 0.35 })
   end
 end
 
@@ -474,10 +502,11 @@ function CAT.open(player)
   head.style.bottom_margin = 4
   s.cat.wallet = G.label(head, "", "quota_big_label", { color = { 1, 0.85, 0.35 } })
   G.pusher(head)
+  G.button(head, "Handbook", "open_handbook", nil, "button", { tooltip = "Every contract, condition, event, tech, crate and plot, with the hazard switches." })
   if q.phase == "shift" then
-    G.label(head, "Rush order: R&D, Supplies and Land cost +25% during a shift.", "semibold_label", { color = { 1, 0.6, 0.4 } })
+    G.label(head, "Rush order: Tech, Supplies and Land cost +25% during a shift.", "semibold_label", { color = { 1, 0.6, 0.4 } })
   elseif P.has("blackmarket") then
-    G.label(head, "Black Market: 25% off R&D, Supplies and Land.", "semibold_label", { color = { 0.6, 1, 0.6 } })
+    G.label(head, "Black Market: 25% off Tech, Supplies and Land.", "semibold_label", { color = { 0.6, 1, 0.6 } })
   end
 
   local body = frame.add({ type = "flow", direction = "horizontal" })

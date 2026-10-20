@@ -5,6 +5,8 @@ local G = require("lib.gui.common")
 local HUD = require("lib.gui.hud")
 local CAT = require("lib.gui.catalog")
 local SC = require("lib.gui.screens")
+local MP = require("lib.gui.market_panel")
+local HB = require("lib.gui.handbook")
 
 local GM = {}
 
@@ -15,6 +17,7 @@ function GM.refresh(player, opening)
   local phase = q.phase
   if phase == "orientation" then
     HUD.destroy(player)
+    MP.destroy(player)
     CAT.close(player)
     SC.close_end(player)
     SC.close_corporate(player)
@@ -27,9 +30,11 @@ function GM.refresh(player, opening)
     SC.close_corporate(player)
     if opening then CAT.close(player) else CAT.rebuild(player) end
     HUD.build(player)
+    MP.build(player)
   elseif phase == "break" then
     SC.close_end(player)
     HUD.build(player)
+    MP.build(player)
     if q.briefing then
       -- Before shift 1 the island is the point: no window in the way.
       if not opening then CAT.rebuild(player) end
@@ -43,12 +48,15 @@ function GM.refresh(player, opening)
     end
   elseif phase == "fired" or phase == "promoted" then
     HUD.destroy(player)
+    MP.destroy(player)
+    HB.close(player)
     CAT.close(player)
     SC.close_corporate(player)
     SC.end_screen(player)
   elseif phase == "retired" then
     SC.close_end(player)
     HUD.build(player)
+    MP.build(player)
     CAT.rebuild(player)
   end
 end
@@ -60,12 +68,15 @@ end
 function GM.update_all()
   for _, p in pairs(U.players()) do
     HUD.update(p)
+    MP.update(p)
     CAT.update(p)
   end
 end
 
 function GM.destroy_all(player)
   HUD.destroy(player)
+  MP.destroy(player)
+  HB.close(player)
   CAT.close(player)
   SC.close_end(player)
   SC.close_corporate(player)
