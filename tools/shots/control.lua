@@ -42,7 +42,7 @@ end
 
 -- "full" walks every screen; "quick" re-checks the break room, catalog tabs
 -- and the end screens; "thumb" grabs the art for mod/thumbnail.png.
-local PLAN = "quick"
+local PLAN = "full"
 
 local plan = {}
 local function step(secs, fn) plan[#plan + 1] = { secs = secs, fn = fn } end
@@ -50,6 +50,8 @@ local function step(secs, fn) plan[#plan + 1] = { secs = secs, fn = fn } end
 local function full()
   step(1.5, function() shot("01-intro") end)
   step(7, function() shot("02-orientation") end)
+  step(0.1, function() call("gui", "handbook") end)
+  step(0.6, function() shot("02b-handbook") end)
   step(0.5, function()
     local p = game.get_player(1)
     p.zoom = 0.75

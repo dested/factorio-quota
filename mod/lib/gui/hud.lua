@@ -145,9 +145,9 @@ function HUD.build(player)
   end
 
   local foot = row(body, 28)
-  local cat_caption = (q.phase == "break" and not q.briefing) and "Break Room (J)" or "Catalog (J)"
+  local cat_caption = (q.phase == "break" and not q.briefing) and "Break Room" or "Catalog"
   G.button(foot, cat_caption, "toggle_catalog", nil, "quota_hud_button",
-    { tooltip = q.phase == "shift" and "Tech, Supplies and Land, with a 25% rush fee during shifts." or nil })
+    { tooltip = q.phase == "shift" and "Catalog (J): Tech, Supplies and Land, with a 25% rush fee during shifts." or "Catalog (J)" })
   refs.warn = G.label(foot, "", "semibold_label")
   refs.warn.style.left_margin = 6
   G.pusher(foot)
@@ -189,7 +189,8 @@ function HUD.update(player)
     r.warn.caption = ""
     return
   end
-  r.warn.caption = { "", "Warnings ", q.warnings_left, "/", R.warnings() }
+  r.warn.caption = { "", "[img=virtual-signal/signal-white-flag] ", q.warnings_left, "/", R.warnings() }
+  r.warn.tooltip = "Written warnings left. Miss a quota with none left and you are fired."
   r.warn.style.font_color = q.warnings_left == 0 and { 1, 0.45, 0.4 } or { 0.8, 0.8, 0.8 }
 
   if q.phase == "shift" then

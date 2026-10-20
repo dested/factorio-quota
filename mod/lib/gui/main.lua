@@ -25,6 +25,8 @@ function GM.refresh(player, opening)
     return
   end
   SC.close_orientation(player)
+  -- A Handbook opened from Run Setup closes when the run starts.
+  if opening and q.briefing then HB.close(player) end
   if phase == "shift" then
     SC.close_end(player)
     SC.close_corporate(player)

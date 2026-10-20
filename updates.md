@@ -3,7 +3,7 @@
 Newest first. One entry per finished task.
 
 ## 2026-10-19 — QUOTA 2.0.0 release build
-Mod ships as a scenario (New Game > Scenarios > QUOTA) and stays dormant in other games; Space Age supported (offworld raws and recycling don't price); `bun run package` builds dist/quota_2.0.0.zip; changelog, README pitch. Market panel redone as HOT (usual x mult = now) + TOP PRICES; Market tab columns aligned. Autotest 120/0 vanilla and Space Age; release zip verified active in scenario, dormant in freeplay. run-autotest now also fails on on_init errors.
+Mod ships as a scenario. Portal listing text in plans/2026-10-19-portal-listing.md, gallery in dist/gallery, MIT LICENSE; HUD footer narrower, Handbook closes on TAKE THE JOB. (New Game > Scenarios > QUOTA) and stays dormant in other games; Space Age supported (offworld raws and recycling don't price); `bun run package` builds dist/quota_2.0.0.zip; changelog, README pitch. Market panel redone as HOT (usual x mult = now) + TOP PRICES; Market tab columns aligned. Autotest 120/0 vanilla and Space Age; release zip verified active in scenario, dormant in freeplay. run-autotest now also fails on on_init errors.
 Touched: mod/control.lua, mod/info.json, mod/changelog.txt, mod/scenarios/quota/*, mod/lib/{values,config}.lua, mod/lib/gui/{market_panel,catalog}.lua, install/{setup,play}.ps1, install/quota-dev, play.sh, tools/{package.ts,run-autotest.sh}, README.md, package.json
 
 ## 2026-10-19 — v2 from Sal's playtest
