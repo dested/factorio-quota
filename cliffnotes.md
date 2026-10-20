@@ -16,7 +16,7 @@ mod (no scenario); it hijacks freeplay from `on_init`.
 - **Play:** double-click `play.cmd` (fresh run) or `play.cmd -Continue`. First run calls
   `install/setup.ps1`, which builds the isolated profile in `.profile/`. **Mac:** `./play.sh`
   (`--continue`, `--setup`) does setup and launch in one script.
-- **Repo:** private https://github.com/dested/factorio-quota (branch main). New machine: clone, then
+- **Repo:** public https://github.com/dested/factorio-quota (branch main). New machine: clone, then
   `install/setup.ps1 -Shortcut` (needs only Factorio 2.1).
 - **Lint Lua:** `bun run lint` (syntax, undefined globals, unused locals, missing module members)
 - **Typecheck tools:** `bun run typecheck` (only the TS in `tools/`)

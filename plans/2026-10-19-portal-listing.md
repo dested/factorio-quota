@@ -7,7 +7,7 @@ Zip: `dist/quota_2.0.0.zip` (`bun run package`). Gallery: `dist/gallery/*.png`, 
 - **Category:** Scenarios
 - **Tags:** Manufacturing, Enemies, Environment
 - **License:** MIT (also in `LICENSE` and inside the zip)
-- **Source URL:** leave empty while the repo is private
+- **Source URL:** https://github.com/dested/factorio-quota
 
 ## Description (paste as Markdown)
 
